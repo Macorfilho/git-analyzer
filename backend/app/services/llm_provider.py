@@ -11,19 +11,18 @@ class OllamaProvider(ILLMProvider):
     def generate_analysis(self, context_data: str) -> Dict[str, Any]:
         # Define the strict schema in the system prompt to guide the model
         system_content = (
-            "You are a strict Code Quality Auditor and Data Analyst. "
-            "Your ONLY purpose is to evaluate GitHub metrics and repository quality. "
-            "You DO NOT care about the user's job history, education, or resume details. "
-            "You speak only in JSON."
+            "You are a Senior Technical Recruiter and Engineering Manager. "
+            "You evaluate GitHub profiles to assess technical proficiency, documentation skills, and personal branding. "
+            "You provide constructive, actionable feedback in strict JSON format."
         )
         
         user_content = (
             f"PROFILE DATA START:\n{context_data}\nPROFILE DATA END\n\n"
             "---------------------------------------------------\n"
             "INSTRUCTIONS:\n"
-            "1. Ignore all resume/CV text in the profile data (e.g., 'Education', 'Experience').\n"
-            "2. Focus on: Repository descriptions, languages used, star counts, and documentation quality.\n"
-            "3. Calculate the following scores (0-100) based ONLY on the evidence above.\n"
+            "1. Analyze the provided GitHub Bio, Repository List, and Profile README.\n"
+            "2. Look for patterns in their tech stack, quality of documentation, and consistency of activity.\n"
+            "3. Calculate scores (0-100) reflecting their readiness for a professional engineering role.\n"
             "4. Return a SINGLE JSON object. No text before or after.\n\n"
             "REQUIRED OUTPUT SCHEMA:\n"
             "{\n"
@@ -31,9 +30,9 @@ class OllamaProvider(ILLMProvider):
             "  \"readme_score\": <int>,\n"
             "  \"repo_quality_score\": <int>,\n"
             "  \"overall_score\": <int>,\n"
-            "  \"summary\": \"<string: 1-2 sentences max>\",\n"
+            "  \"summary\": \"<string: Detailed executive summary highlighting specific strengths and critical gaps in the portfolio>\",\n"
             "  \"suggestions\": [\n"
-            "    {\"category\": \"<string>\", \"severity\": \"low|medium|high\", \"message\": \"<string>\"}\n"
+            "    {\"category\": \"<string>\", \"severity\": \"low|medium|high\", \"message\": \"<string: Specific, actionable advice. Do not give generic advice like 'add more repos'. Suggest specific technologies or project types based on their current stack.>\"}\n"
             "  ]\n"
             "}"
         )

@@ -44,16 +44,22 @@ class AnalysisService:
         Formats the UserProfile into a string context for the LLM.
         """
         repo_summaries = []
+        languages = set()
+
         for repo in user.repositories[:15]:  # Limit to top 15 to avoid token limits if needed
+            if repo.language:
+                languages.add(repo.language)
+            
             repo_summaries.append(
                 f"- Name: {repo.name}\n"
                 f"  Language: {repo.language}\n"
-                f"  Description: {repo.description or 'No description'}\n"
+                f"  Description: {repo.description or 'MISSING DESCRIPTION (High negative signal)'}\n"
                 f"  Stars: {repo.stargazers_count} | Forks: {repo.forks_count}\n"
                 f"  Last Updated: {repo.updated_at}"
             )
         
         repos_text = "\n".join(repo_summaries) if repo_summaries else "No public repositories found."
+        detected_languages = ", ".join(sorted(languages)) if languages else "None detected"
 
         context = (
             f"User: {user.username}\n"
@@ -61,7 +67,8 @@ class AnalysisService:
             f"Bio: {user.bio or 'N/A'}\n"
             f"Location: {user.location or 'N/A'}\n"
             f"Followers: {user.followers} | Following: {user.following}\n"
-            f"Public Repos: {user.public_repos}\n\n"
+            f"Public Repos: {user.public_repos}\n"
+            f"Detected Languages: {detected_languages}\n\n"
             f"--- Repositories (Top 15) ---\n"
             f"{repos_text}\n\n"
             f"--- Main Profile README ---\n"

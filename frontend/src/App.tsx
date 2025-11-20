@@ -38,18 +38,15 @@ const App: React.FC = () => {
             
             {/* Summary Section */}
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-12">
-               <div className="flex flex-col md:flex-row items-center justify-between mb-8">
-                  <div>
-                      <h2 className="text-3xl font-light mb-1">Results for <span className="font-semibold">{data.username}</span></h2>
-                      <div className="prose prose-sm text-gray-400 max-w-none">
-                        <ReactMarkdown>{data.summary}</ReactMarkdown>
-                      </div>
-                  </div>
-                  <div className="mt-4 md:mt-0">
-                      <span className="inline-block px-4 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">
-                          {data.details?.repo_count ?? 0} Repositories Scanned
-                      </span>
-                  </div>
+               <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
+                  <h2 className="text-3xl font-light">Results for <span className="font-semibold">{data.username}</span></h2>
+                  <span className="inline-flex items-center px-3 py-1 text-sm font-medium bg-gray-100 text-gray-600 rounded-full whitespace-nowrap">
+                      {data.details?.repo_count ?? 0} Repositories Scanned
+                  </span>
+               </div>
+               
+               <div className="prose prose-sm text-gray-500 max-w-none mb-8">
+                  <ReactMarkdown>{data.summary}</ReactMarkdown>
                </div>
 
                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
