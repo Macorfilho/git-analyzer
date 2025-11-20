@@ -1,0 +1,5 @@
+flask
+pydantic
+PyGithub
+python-dotenv
+flask-cors
