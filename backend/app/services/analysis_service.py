@@ -22,12 +22,13 @@ class AnalysisService:
 
         # 4. Map to AnalysisReport
         # Ensure the LLM response has the expected fields, providing defaults if necessary
+        # We cast scores to int() to handle cases where LLM returns floats (e.g., 87.5)
         return AnalysisReport(
             username=user_profile.username,
-            profile_score=llm_result.get("profile_score", 0),
-            readme_score=llm_result.get("readme_score", 0),
-            repo_quality_score=llm_result.get("repo_quality_score", 0),
-            overall_score=llm_result.get("overall_score", 0),
+            profile_score=int(llm_result.get("profile_score", 0)),
+            readme_score=int(llm_result.get("readme_score", 0)),
+            repo_quality_score=int(llm_result.get("repo_quality_score", 0)),
+            overall_score=int(llm_result.get("overall_score", 0)),
             summary=llm_result.get("summary", "Analysis complete."),
             suggestions=[Suggestion(**s) for s in llm_result.get("suggestions", [])],
             details={

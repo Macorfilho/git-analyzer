@@ -9,30 +9,33 @@ class OllamaProvider(ILLMProvider):
         self.model = model
 
     def generate_analysis(self, context_data: str) -> Dict[str, Any]:
-        # Using Chat API
-        # REMOVED format="json" to prevent the model from "parsing" the resume into JSON.
-        # Instead, we ask it to GENERATE the analysis JSON.
-        
+        # Define the strict schema in the system prompt to guide the model
         system_content = (
-            "You are a GitHub Profile Analyzer. "
-            "Your job is to score the profile and provide feedback. "
-            "You must return the result as a valid JSON string."
+            "You are a strict Code Quality Auditor and Data Analyst. "
+            "Your ONLY purpose is to evaluate GitHub metrics and repository quality. "
+            "You DO NOT care about the user's job history, education, or resume details. "
+            "You speak only in JSON."
         )
         
         user_content = (
-            "Analyze this profile data and calculate scores (0-100).\n"
-            "Return ONLY a raw JSON object with this exact schema:\n\n"
+            f"PROFILE DATA START:\n{context_data}\nPROFILE DATA END\n\n"
+            "---------------------------------------------------\n"
+            "INSTRUCTIONS:\n"
+            "1. Ignore all resume/CV text in the profile data (e.g., 'Education', 'Experience').\n"
+            "2. Focus on: Repository descriptions, languages used, star counts, and documentation quality.\n"
+            "3. Calculate the following scores (0-100) based ONLY on the evidence above.\n"
+            "4. Return a SINGLE JSON object. No text before or after.\n\n"
+            "REQUIRED OUTPUT SCHEMA:\n"
             "{\n"
             "  \"profile_score\": <int>,\n"
             "  \"readme_score\": <int>,\n"
             "  \"repo_quality_score\": <int>,\n"
             "  \"overall_score\": <int>,\n"
-            "  \"summary\": \"<string>\",\n"
+            "  \"summary\": \"<string: 1-2 sentences max>\",\n"
             "  \"suggestions\": [\n"
             "    {\"category\": \"<string>\", \"severity\": \"low|medium|high\", \"message\": \"<string>\"}\n"
             "  ]\n"
-            "}\n\n"
-            f"PROFILE CONTENT:\n{context_data}"
+            "}"
         )
 
         try:
@@ -43,7 +46,7 @@ class OllamaProvider(ILLMProvider):
                     {"role": "user", "content": user_content}
                 ],
                 "stream": False,
-                # "format": "json"  <-- Removed to test if it helps adherence
+                "format": "json"
             }
             
             print(f"Sending request to Ollama Chat API ({self.model})...")
@@ -52,21 +55,9 @@ class OllamaProvider(ILLMProvider):
             
             result = response.json()
             raw_response = result['message']['content']
-            print(f"Raw LLM Response: {raw_response}") # Debug log
+            print(f"Raw LLM Response: {raw_response}")
             
-            # Clean markdown code blocks which are common in text mode
-            cleaned_response = raw_response.strip()
-            if "```" in cleaned_response:
-                # Extract content between first and last ```
-                parts = cleaned_response.split("```")
-                # Usually the code block is in the second part (index 1)
-                # e.g. "Here is the JSON:\n```json\n{...}\n```"
-                if len(parts) >= 3:
-                    cleaned_response = parts[1]
-                    if cleaned_response.startswith("json"):
-                        cleaned_response = cleaned_response[4:]
-            
-            return json.loads(cleaned_response)
+            return json.loads(raw_response)
             
         except requests.exceptions.ConnectionError:
             print("Ollama connection failed. Ensure Ollama is running.")
@@ -87,40 +78,7 @@ class OllamaProvider(ILLMProvider):
                 "overall_score": 0,
                 "summary": "Analysis failed: Invalid JSON response from AI.",
                 "suggestions": [],
-                "raw_llm_response": {"error": "JSONDecodeError", "raw": raw_response}
-            }
-        except Exception as e:
-            print(f"LLM Provider Error: {e}")
-            return {
-                "profile_score": 0,
-                "readme_score": 0,
-                "repo_quality_score": 0,
-                "overall_score": 0,
-                "summary": f"Analysis failed due to an error: {str(e)}",
-                "suggestions": []
-            }
-            
-        except requests.exceptions.ConnectionError:
-            print("Ollama connection failed. Ensure Ollama is running.")
-            return {
-                "profile_score": 0,
-                "readme_score": 0,
-                "repo_quality_score": 0,
-                "overall_score": 0,
-                "summary": "Analysis unavailable: Could not connect to the AI service (Ollama). Please ensure Ollama is running locally.",
-                "suggestions": []
-            }
-        except json.JSONDecodeError as e:
-            print(f"JSON Parse Error: {e}")
-            print(f"Raw LLM Response: {raw_response}") # Log raw response for debug
-            return {
-                "profile_score": 0,
-                "readme_score": 0,
-                "repo_quality_score": 0,
-                "overall_score": 0,
-                "summary": "Analysis failed: The AI returned an invalid response format.",
-                "suggestions": [],
-                "raw_llm_response": {"error": "JSONDecodeError", "raw": raw_response}
+                "raw_llm_response": {"error": "JSONDecodeError"}
             }
         except Exception as e:
             print(f"LLM Provider Error: {e}")
