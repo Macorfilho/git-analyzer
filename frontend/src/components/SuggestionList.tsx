@@ -1,5 +1,6 @@
 import React from 'react';
 import { Suggestion } from '../types';
+import ReactMarkdown from 'react-markdown';
 
 interface SuggestionListProps {
     suggestions: Suggestion[];
@@ -27,9 +28,9 @@ const SuggestionList: React.FC<SuggestionListProps> = ({ suggestions }) => {
                     <span className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">
                         {suggestion.category}
                     </span>
-                    <p className="text-gray-800 font-light">
-                        {suggestion.message}
-                    </p>
+                    <div className="prose prose-sm text-gray-800 font-light max-w-none">
+                        <ReactMarkdown>{suggestion.message}</ReactMarkdown>
+                    </div>
                 </div>
                 <span className="text-xs font-medium px-2 py-1 bg-white rounded-full border border-gray-200 text-gray-500 capitalize">
                     {suggestion.severity} Priority

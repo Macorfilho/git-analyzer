@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from typing import Dict, Any
 from app.models.dtos import UserProfile
 
 class IGithubProvider(ABC):
@@ -21,5 +22,23 @@ class IGithubProvider(ABC):
         Raises:
             ValueError: If the user is not found.
             ConnectionError: If there is an issue connecting to the GitHub API.
+        """
+        pass
+
+class ILLMProvider(ABC):
+    """
+    Abstract Interface for LLM Provider.
+    """
+    
+    @abstractmethod
+    def generate_analysis(self, context_data: str) -> Dict[str, Any]:
+        """
+        Generates analysis based on the provided context data.
+        
+        Args:
+            context_data (str): Data context for the LLM (e.g. profile info).
+            
+        Returns:
+            Dict[str, Any]: structured analysis result.
         """
         pass

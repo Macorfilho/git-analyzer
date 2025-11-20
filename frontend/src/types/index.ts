@@ -19,9 +19,10 @@ export interface AnalysisReport {
     readme_score: number;
     repo_quality_score: number;
     overall_score: number;
-    summary: string;
+    summary: string; // This can now contain Markdown
     suggestions: Suggestion[];
     details: AnalysisDetails;
+    raw_llm_response?: Record<string, any>; // Optional field for debugging LLM raw output
 }
 
 export interface ApiError {

@@ -37,3 +37,4 @@ class AnalysisReport(BaseModel):
     summary: str
     suggestions: List[Suggestion] = []
     details: Dict[str, Any] = Field(default_factory=dict)
+    raw_llm_response: Optional[Dict[str, Any]] = None

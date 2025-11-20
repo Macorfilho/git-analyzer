@@ -3,6 +3,7 @@ import SearchBar from './components/SearchBar';
 import ScoreCard from './components/ScoreCard';
 import SuggestionList from './components/SuggestionList';
 import { useGithubAnalysis } from './hooks/useGithubAnalysis';
+import ReactMarkdown from 'react-markdown';
 
 const App: React.FC = () => {
   const { data, loading, error, analyzeProfile } = useGithubAnalysis();
@@ -40,7 +41,9 @@ const App: React.FC = () => {
                <div className="flex flex-col md:flex-row items-center justify-between mb-8">
                   <div>
                       <h2 className="text-3xl font-light mb-1">Results for <span className="font-semibold">{data.username}</span></h2>
-                      <p className="text-gray-400 text-sm">{data.summary}</p>
+                      <div className="prose prose-sm text-gray-400 max-w-none">
+                        <ReactMarkdown>{data.summary}</ReactMarkdown>
+                      </div>
                   </div>
                   <div className="mt-4 md:mt-0">
                       <span className="inline-block px-4 py-1 bg-gray-100 text-gray-600 rounded-full text-sm font-medium">

@@ -1,52 +1,69 @@
-from app.core.interfaces import IGithubProvider
-from app.analyzers.profile_analyzer import ProfileAnalyzer
-from app.analyzers.repository_analyzer import RepositoryAnalyzer
-from app.services.suggestion_engine import SuggestionEngine
-from app.models.dtos import AnalysisReport, Suggestion
+from typing import Dict, Any
+from app.core.interfaces import IGithubProvider, ILLMProvider
+from app.models.dtos import AnalysisReport, UserProfile, Suggestion
 
 class AnalysisService:
     """
-    Orchestrator service that coordinates data fetching and analysis.
+    Orchestrator service that coordinates data fetching and analysis via LLM.
     """
-    def __init__(self, github_provider: IGithubProvider):
+    def __init__(self, github_provider: IGithubProvider, llm_provider: ILLMProvider):
         self.github_provider = github_provider
-        self.profile_analyzer = ProfileAnalyzer()
-        self.repo_analyzer = RepositoryAnalyzer()
-        self.suggestion_engine = SuggestionEngine()
+        self.llm_provider = llm_provider
 
     def analyze_user(self, username: str) -> AnalysisReport:
         # 1. Fetch Data
         user_profile = self.github_provider.get_user_profile(username)
 
-        # 2. Analyze Profile
-        profile_results = self.profile_analyzer.analyze(user_profile)
-        
-        # 3. Analyze Repositories
-        repo_results = self.repo_analyzer.analyze(user_profile.repositories)
+        # 2. Prepare Context for LLM
+        context = self._prepare_context(user_profile)
 
-        # 4. Generate Suggestions
-        suggestions = self.suggestion_engine.generate_suggestions(user_profile.repositories)
-        
-        # Add analysis issues as suggestions if needed or keep separate
-        for issue in repo_results.get("issues", []):
-             suggestions.append(Suggestion(category="Repository Issue", severity="medium", message=issue))
+        # 3. Generate Analysis via LLM
+        llm_result = self.llm_provider.generate_analysis(context)
 
-        for missing in profile_results.get("missing_elements", []):
-            suggestions.append(Suggestion(category="Profile Missing", severity="high", message=f"Add {missing} to your profile."))
-
-        # 5. Calculate Overall Score (Simple Average for now)
-        overall_score = int((profile_results["score"] + repo_results["score"]) / 2)
-
+        # 4. Map to AnalysisReport
+        # Ensure the LLM response has the expected fields, providing defaults if necessary
         return AnalysisReport(
             username=user_profile.username,
-            profile_score=profile_results["score"],
-            readme_score=profile_results["score"], # Using profile score as proxy for now, or split logic
-            repo_quality_score=repo_results["score"],
-            overall_score=overall_score,
-            summary=f"Profile analysis for {username} complete.",
-            suggestions=suggestions,
+            profile_score=llm_result.get("profile_score", 0),
+            readme_score=llm_result.get("readme_score", 0),
+            repo_quality_score=llm_result.get("repo_quality_score", 0),
+            overall_score=llm_result.get("overall_score", 0),
+            summary=llm_result.get("summary", "Analysis complete."),
+            suggestions=[Suggestion(**s) for s in llm_result.get("suggestions", [])],
             details={
-                "profile_details": profile_results["details"],
-                "repo_count": len(user_profile.repositories)
-            }
+                "repo_count": len(user_profile.repositories),
+                "followers": user_profile.followers,
+                "public_repos": user_profile.public_repos
+            },
+            raw_llm_response=llm_result
         )
+
+    def _prepare_context(self, user: UserProfile) -> str:
+        """
+        Formats the UserProfile into a string context for the LLM.
+        """
+        repo_summaries = []
+        for repo in user.repositories[:15]:  # Limit to top 15 to avoid token limits if needed
+            repo_summaries.append(
+                f"- Name: {repo.name}\n"
+                f"  Language: {repo.language}\n"
+                f"  Description: {repo.description or 'No description'}\n"
+                f"  Stars: {repo.stargazers_count} | Forks: {repo.forks_count}\n"
+                f"  Last Updated: {repo.updated_at}"
+            )
+        
+        repos_text = "\n".join(repo_summaries) if repo_summaries else "No public repositories found."
+
+        context = (
+            f"User: {user.username}\n"
+            f"Name: {user.name or 'N/A'}\n"
+            f"Bio: {user.bio or 'N/A'}\n"
+            f"Location: {user.location or 'N/A'}\n"
+            f"Followers: {user.followers} | Following: {user.following}\n"
+            f"Public Repos: {user.public_repos}\n\n"
+            f"--- Repositories (Top 15) ---\n"
+            f"{repos_text}\n\n"
+            f"--- Main Profile README ---\n"
+            f"{user.readme_content or 'No README content available.'}"
+        )
+        return context

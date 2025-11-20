@@ -3,3 +3,4 @@ pydantic
 PyGithub
 python-dotenv
 flask-cors
+requests
