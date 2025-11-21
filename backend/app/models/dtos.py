@@ -9,6 +9,13 @@ class Repository(BaseModel):
     forks_count: int = 0
     updated_at: str
     html_url: str
+    has_ci: bool = False
+    has_docker: bool = False
+    has_tests: bool = False
+    has_license: bool = False
+    dependencies: List[str] = []
+    maturity_score: int = 0
+    maturity_label: str = "Hobby"
 
 class UserProfile(BaseModel):
     username: str

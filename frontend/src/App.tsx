@@ -2,11 +2,22 @@ import React from 'react';
 import SearchBar from './components/SearchBar';
 import ScoreCard from './components/ScoreCard';
 import SuggestionList from './components/SuggestionList';
+import RepositoryList from './components/RepositoryList';
 import { useGithubAnalysis } from './hooks/useGithubAnalysis';
 import ReactMarkdown from 'react-markdown';
 
 const App: React.FC = () => {
-  const { data, loading, error, analyzeProfile } = useGithubAnalysis();
+  const { data, loading, error, status, analyzeProfile } = useGithubAnalysis();
+
+  const getStatusMessage = () => {
+      switch(status) {
+          case 'queued': return 'Analysis queued...';
+          case 'started': return 'Analyzing profile (this may take a minute)...';
+          case 'finished': return 'Analysis complete!';
+          case 'failed': return 'Analysis failed.';
+          default: return 'Loading...';
+      }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-black selection:text-white">
@@ -24,17 +35,24 @@ const App: React.FC = () => {
 
         {/* Search */}
         <SearchBar onSearch={analyzeProfile} loading={loading} />
+        
+        {/* Loading Status Indicator */}
+        {loading && (
+            <div className="mt-4 text-center text-gray-500 animate-pulse">
+                {getStatusMessage()}
+            </div>
+        )}
 
         {/* Error State */}
         {error && (
-          <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded relative mb-8 text-center" role="alert">
+          <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded relative mb-8 text-center mt-8" role="alert">
             <span className="block sm:inline font-medium">{error}</span>
           </div>
         )}
 
         {/* Results */}
         {data && !loading && (
-          <div className="animate-fade-in-up">
+          <div className="animate-fade-in-up mt-12">
             
             {/* Summary Section */}
             <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-12">
@@ -56,9 +74,17 @@ const App: React.FC = () => {
                   <ScoreCard score={data.repo_quality_score} label="Repo Standards" />
                </div>
             </div>
+            
+            {/* Repositories Section */}
+            {data.details?.repositories && (
+                <RepositoryList repositories={data.details.repositories} />
+            )}
 
-            {/* Suggestions Section */}
-            <SuggestionList suggestions={data.suggestions} />
+            {/* Suggestions & Roadmap Section */}
+            <SuggestionList 
+                suggestions={data.suggestions} 
+                roadmap={data.details?.career_roadmap}
+            />
 
           </div>
         )}

@@ -4,3 +4,5 @@ PyGithub
 python-dotenv
 flask-cors
 requests
+redis
+rq

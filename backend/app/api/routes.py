@@ -1,32 +1,62 @@
 from flask import Blueprint, jsonify, request
-from app.services.analysis_service import AnalysisService
-from app.services.github_provider import GithubProvider
-from app.services.llm_provider import OllamaProvider
+from app.redis_client import get_queue
+from app.tasks import run_analysis_task
+from app.job_store import JobStore
 import os
 
 api_bp = Blueprint('api', __name__)
+job_store = JobStore()
 
-def get_analysis_service(model: str = "llama3"):
-    # Dependency Injection (Manual for this scale)
-    token = os.getenv("GITHUB_TOKEN")
-    github_provider = GithubProvider(token=token)
-    llm_provider = OllamaProvider(model=model)
-    return AnalysisService(github_provider, llm_provider)
-
-@api_bp.route('/analyze/<username>', methods=['GET'])
+@api_bp.route('/analyze/<username>', methods=['POST'])
 def analyze_profile(username):
+    """
+    Enqueues an analysis task for the given username.
+    """
     try:
-        llm_model = request.args.get('model', 'llama3')
-        service = get_analysis_service(model=llm_model)
-        report = service.analyze_user(username)
-        return jsonify(report.dict()), 200
+        # Get query params from the POST request (or JSON body? usually params in URL or body)
+        # The previous GET used request.args. Let's support JSON body for POST.
+        data = request.get_json() or {}
+        llm_model = data.get('model', 'llama3')
+        
+        # Enqueue the job
+        queue = get_queue()
+        job = queue.enqueue(
+            run_analysis_task,
+            args=(username, llm_model),
+            job_timeout='10m' # Allow 10 mins for analysis
+        )
+        
+        return jsonify({
+            "message": "Analysis enqueued",
+            "job_id": job.get_id(),
+            "status_url": f"/api/status/{job.get_id()}"
+        }), 202
 
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 404
-    except ConnectionError as e:
-        # Simple heuristic: if "403" in str(e) or "rate limit" in str(e).lower():
-        if "403" in str(e) or "rate limit" in str(e).lower():
-             return jsonify({"error": "GitHub API Rate Limit Exceeded. Please try again later."}), 429
-        return jsonify({"error": str(e)}), 503
+    except Exception as e:
+        return jsonify({"error": "Failed to enqueue job", "details": str(e)}), 500
+
+@api_bp.route('/status/<job_id>', methods=['GET'])
+def get_job_status(job_id):
+    """
+    Checks the status of a background job.
+    """
+    try:
+        status = job_store.get_status(job_id)
+        
+        if status == "unknown":
+            return jsonify({"error": "Job not found"}), 404
+            
+        response = {"job_id": job_id, "status": status}
+        
+        if status == "finished":
+            result = job_store.get_result(job_id)
+            response["result"] = result
+        elif status == "failed":
+            # Optionally fetch error details from job.exc_info
+            job = job_store.get_job(job_id)
+            response["error"] = job.exc_info if job else "Unknown error"
+
+        return jsonify(response), 200
+        
     except Exception as e:
         return jsonify({"error": "Internal Server Error", "details": str(e)}), 500
