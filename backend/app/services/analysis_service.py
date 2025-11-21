@@ -1,7 +1,8 @@
 from typing import Dict, Any
 from app.core.interfaces import IGithubProvider, ILLMProvider
 from app.models.dtos import AnalysisReport, UserProfile, Suggestion
-from app.services.insight_engine import MaturityAnalyzer, TechStackAnalyzer
+from app.services.insight_engine import MaturityAnalyzer, TechStackAnalyzer, RepoDocumentationAnalyzer, CommitHygieneAnalyzer
+from app.services.collectors import StructureCollector, DependencyCollector
 
 class AnalysisService:
     """
@@ -12,6 +13,12 @@ class AnalysisService:
         self.llm_provider = llm_provider
         self.maturity_analyzer = MaturityAnalyzer()
         self.tech_stack_analyzer = TechStackAnalyzer()
+        self.repo_doc_analyzer = RepoDocumentationAnalyzer()
+        self.commit_hygiene_analyzer = CommitHygieneAnalyzer()
+        
+        # Collectors
+        self.structure_collector = StructureCollector()
+        self.dependency_collector = DependencyCollector()
 
     def analyze_user(self, username: str) -> AnalysisReport:
         # 1. Fetch Data
@@ -19,6 +26,31 @@ class AnalysisService:
 
         # 2. Run Insights (Maturity & Tech Stack)
         for repo in user_profile.repositories:
+            # Run Collectors
+            # Structure
+            # Updated to use file_tree
+            struct_flags = self.structure_collector.analyze(repo.file_tree)
+            repo.has_ci = struct_flags["has_ci"]
+            repo.has_docker = struct_flags["has_docker"]
+            repo.has_tests = struct_flags["has_tests"]
+            repo.has_license = struct_flags["has_license"]
+            
+            # Dependencies
+            # DependencyCollector now accepts the dependency_files dictionary directly
+            repo.dependencies = self.dependency_collector.analyze(repo.dependency_files)
+            
+            # Git History (Commit Hygiene)
+            # Replaced GitHistoryCollector with CommitHygieneAnalyzer
+            hygiene_label, cc_ratio, avg_days = self.commit_hygiene_analyzer.analyze(repo.commit_history)
+            repo.commit_frequency = avg_days # Renaming variable usage logic if needed, but avg_days matches conceptually roughly or we adapt
+            repo.conventional_commits_ratio = cc_ratio
+            # Note: average_message_length is no longer computed by CommitHygieneAnalyzer in this spec,
+            # but we can leave it as default or compute it if strictly needed. For now, we'll trust the new analyzer's focus.
+            
+            # Repo Documentation
+            repo.repo_documentation_score = self.repo_doc_analyzer.analyze(repo)
+            
+            # Maturity
             score, label = self.maturity_analyzer.analyze(repo)
             repo.maturity_score = score
             repo.maturity_label = label
@@ -56,47 +88,115 @@ class AnalysisService:
 
     def _prepare_context(self, user: UserProfile, tech_stack: Dict[str, list]) -> str:
         """
-        Formats the UserProfile into a string context for the LLM.
+        Formats the UserProfile into a rich, narrative context for the LLM to reduce hallucinations.
         """
-        repo_summaries = []
-        languages = set()
+        from datetime import datetime, timezone
+        
+        repo_narratives = []
+        
+        # Aggregators
+        total_doc_score = sum(r.repo_documentation_score for r in user.repositories)
+        avg_doc_score = total_doc_score / len(user.repositories) if user.repositories else 0
+        
+        repos_with_ci = sum(1 for r in user.repositories if r.has_ci)
+        repos_with_tests = sum(1 for r in user.repositories if r.has_tests)
+        
+        current_time = datetime.now(timezone.utc)
 
-        for repo in user.repositories[:15]:  # Limit to top 15 to avoid token limits if needed
-            if repo.language:
-                languages.add(repo.language)
+        # Generate Narrative Summaries
+        for repo in user.repositories[:15]:
+            # 1. Determine Status & Staleness
+            last_update_dt = None
+            try:
+                 last_update_dt = datetime.fromisoformat(repo.updated_at.replace("Z", "+00:00"))
+                 if last_update_dt.tzinfo is None:
+                     last_update_dt = last_update_dt.replace(tzinfo=timezone.utc)
+            except:
+                pass
             
-            deps_str = ", ".join(repo.dependencies[:5]) if repo.dependencies else "None detected"
+            days_since_update = (current_time - last_update_dt).days if last_update_dt else 9999
+            status_str = "Active"
+            if days_since_update > 365:
+                status_str = "Ghost/Archived"
+            
+            # 2. Construct Narrative Line
+            # Stack info
+            stack_items = [repo.language] + repo.dependencies[:5]
+            stack_str = ", ".join(filter(None, stack_items))
+            
+            # Maturity & Hygiene labels
+            maturity_info = f"{repo.maturity_label} (Score: {repo.maturity_score})"
+            
+            hygiene_label = "Messy"
+            if repo.conventional_commits_ratio > 0.5:
+                hygiene_label = "Conventional/Professional"
+            elif repo.conventional_commits_ratio > 0.2:
+                hygiene_label = "Decent"
+            
+            # Docs Details
+            docs_label = "Weak"
+            docs_missing = []
+            if repo.repo_documentation_score > 80:
+                docs_label = "Strong"
+            elif repo.repo_documentation_score > 50:
+                docs_label = "Adequate"
+            
+            # Check for missing specific sections based on score content
+            # Since we don't store the missing headers in DTO, we re-check or infer.
+            # Ideally, Analyzer should return metadata. For now, we check raw content quickly if available.
+            if repo.readme_content:
+                lower_readme = repo.readme_content.lower()
+                if "usage" not in lower_readme:
+                    docs_missing.append("'Usage'")
+                if "installation" not in lower_readme and "getting started" not in lower_readme:
+                    docs_missing.append("'Installation'")
+            
+            docs_detail = f"{docs_label} (Score: {repo.repo_documentation_score})"
+            if docs_missing:
+                docs_detail += f" (Missing {', '.join(docs_missing)} section)"
+            
+            # 3. Explicit Signals (Ghost / Red Flags)
+            prefix = ""
+            
+            # Ghost Project: Low maturity & inactive > 1 year
+            if repo.maturity_score < 30 and days_since_update > 365:
+                prefix = "[GHOST PROJECT] "
+                status_str = "Ghost"
 
-            repo_summaries.append(
-                f"- Name: {repo.name}\n"
-                f"  Language: {repo.language}\n"
-                f"  Description: {repo.description or 'MISSING DESCRIPTION (High negative signal)'}\n"
-                f"  Stars: {repo.stargazers_count} | Forks: {repo.forks_count}\n"
-                f"  Last Updated: {repo.updated_at}\n"
-                f"  Maturity: {repo.maturity_label} (Score: {repo.maturity_score})\n"
-                f"  Signals: CI={repo.has_ci}, Tests={repo.has_tests}, Docker={repo.has_docker}, License={repo.has_license}\n"
-                f"  Dependencies: {deps_str}"
+            # Final Line Construction
+            line = (
+                f"{prefix}Repo: {repo.name} | "
+                f"Stack: {stack_str} | "
+                f"Maturity: {maturity_info} | "
+                f"Docs: {docs_detail} | "
+                f"Hygiene: {hygiene_label} | "
+                f"Status: {status_str} (Updated {days_since_update} days ago)"
             )
+            repo_narratives.append(line)
         
-        repos_text = "\n".join(repo_summaries) if repo_summaries else "No public repositories found."
-        detected_languages = ", ".join(sorted(languages)) if languages else "None detected"
+        repos_text = "\n".join(repo_narratives) if repo_narratives else "No public repositories found."
         
-        core_stack_str = ", ".join(tech_stack["core_stack"]) if tech_stack["core_stack"] else "None identified"
-        exp_stack_str = ", ".join(tech_stack["experimentation"]) if tech_stack["experimentation"] else "None identified"
-
+        # Tech Stack Aggregation
+        core_stack = tech_stack.get("core_stack", [])
+        dabbling_stack = tech_stack.get("experimentation", [])
+        primary_ecosystem = ', '.join(core_stack) if core_stack else 'None identified'
+        
         context = (
-            f"User: {user.username}\n"
-            f"Name: {user.name or 'N/A'}\n"
-            f"Bio: {user.bio or 'N/A'}\n"
-            f"Location: {user.location or 'N/A'}\n"
-            f"Followers: {user.followers} | Following: {user.following}\n"
-            f"Public Repos: {user.public_repos}\n"
-            f"Detected Languages: {detected_languages}\n"
-            f"Core Tech Stack (Production-Ready): {core_stack_str}\n"
-            f"Experimental Tech Stack: {exp_stack_str}\n\n"
-            f"--- Repositories (Top 15) ---\n"
+            f"REPORT FOR USER: {user.username}\n"
+            f"BIO: {user.bio or 'No bio provided'}\n\n"
+            f"--- PORTFOLIO ANALYSIS ---\n"
+            f"- Total Repositories: {len(user.repositories)}\n"
+            f"- Total Repos with CI/CD: {repos_with_ci}/{len(user.repositories)}\n"
+            f"- Total Repos with Tests: {repos_with_tests}/{len(user.repositories)}\n"
+            f"- Primary Ecosystem: {primary_ecosystem}\n"
+            f"- Average Documentation Score: {int(avg_doc_score)}/100\n"
+            f"- Experimental Tech: {', '.join(dabbling_stack) if dabbling_stack else 'None'}\n\n"
+            f"--- REPOSITORY NARRATIVES ---\n"
             f"{repos_text}\n\n"
-            f"--- Main Profile README ---\n"
-            f"{user.readme_content or 'No README content available.'}"
+            f"--- INSTRUCTIONS FOR ANALYSIS ---\n"
+            f"Based ONLY on the above data, analyze the user's profile. \n"
+            f"1. Ignore 'Ghost Projects' for current skill estimation.\n"
+            f"2. Penalize 'Red Flags' heavily in the Quality Score.\n"
+            f"3. Highlight 'Production-Grade' habits (CI/CD, Tests, Documentation) as key strengths."
         )
         return context

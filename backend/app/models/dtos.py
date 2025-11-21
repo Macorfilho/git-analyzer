@@ -16,6 +16,18 @@ class Repository(BaseModel):
     dependencies: List[str] = []
     maturity_score: int = 0
     maturity_label: str = "Hobby"
+    
+    # Advanced Metrics (New)
+    conventional_commits_ratio: float = 0.0
+    commit_frequency: float = 0.0
+    average_message_length: float = 0.0
+    repo_documentation_score: int = 0
+
+    # Raw Data Fields
+    file_tree: List[str] = []
+    dependency_files: Dict[str, str] = Field(default_factory=dict)
+    readme_content: Optional[str] = None
+    commit_history: List[Dict[str, Any]] = []
 
 class UserProfile(BaseModel):
     username: str

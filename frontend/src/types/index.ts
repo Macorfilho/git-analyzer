@@ -24,6 +24,10 @@ export interface Repository {
     dependencies: string[];
     maturity_score: number;
     maturity_label: "Production-Grade" | "Prototype" | "Hobby";
+    conventional_commits_ratio: number;
+    commit_frequency: number;
+    average_message_length: number;
+    repo_documentation_score: number;
 }
 
 export interface AnalysisDetails {
@@ -42,6 +46,7 @@ export interface AnalysisReport {
     profile_score: number;
     readme_score: number;
     repo_quality_score: number;
+    repo_docs_score: number;
     overall_score: number;
     summary: string;
     suggestions: Suggestion[];

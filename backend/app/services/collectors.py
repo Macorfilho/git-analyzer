@@ -1,12 +1,13 @@
-from typing import List, Callable, Optional, Any, Dict
+from typing import List, Dict, Any
 import json
 import re
+from datetime import datetime
 
 class StructureCollector:
     """
     Analyzes the file structure of a repository to detect key characteristics.
     """
-    def analyze(self, root_files: List[str]) -> Dict[str, bool]:
+    def analyze(self, file_paths: List[str]) -> Dict[str, bool]:
         flags = {
             "has_ci": False,
             "has_docker": False,
@@ -14,52 +15,68 @@ class StructureCollector:
             "has_license": False
         }
         
-        normalized_files = [f.lower() for f in root_files]
+        # Convert all paths to lowercase for case-insensitive matching
+        normalized_files = [f.lower() for f in file_paths]
         
-        # Check for CI (GitHub Actions, Travis)
-        # Note: Existence of .github implies potentially Actions, but strictly we should check workflows.
-        # Given we only have root files here, we use .github as a proxy or look for specific CI files.
-        if ".github" in normalized_files or ".travis.yml" in normalized_files:
-             flags["has_ci"] = True
-             
-        # Check for Docker
-        if any("dockerfile" in f for f in normalized_files):
-            flags["has_docker"] = True
+        for f in normalized_files:
+            # Check for CI
+            if ".github/workflows" in f or ".gitlab-ci.yml" in f or "circleci/" in f or ".circleci/" in f or ".travis.yml" in f:
+                flags["has_ci"] = True
             
-        # Check for Tests (common folders or config files)
-        if any(f in ["tests", "test", "spec", "__tests__"] for f in normalized_files) or "pytest.ini" in normalized_files:
-            flags["has_tests"] = True
+            # Check for Docker
+            if "dockerfile" in f or "docker-compose" in f:
+                flags["has_docker"] = True
             
-        # Check for License
-        if any("license" in f for f in normalized_files) or "copying" in normalized_files:
-            flags["has_license"] = True
-            
+            # Check for Tests
+            parts = f.split('/')
+            if any(p in ["test", "tests", "spec", "__tests__"] for p in parts):
+                flags["has_tests"] = True
+            elif f.endswith(("_test.py", ".test.js", "_spec.rb", "pytest.ini")):
+                flags["has_tests"] = True
+                
+            # Check for License
+            if "license" in f or "copying" in f:
+                flags["has_license"] = True
+                
         return flags
 
 class DependencyCollector:
     """
     Extracts dependency information from package manifest files.
     """
-    def analyze(self, repo_obj: Any, fetch_content_func: Callable[[Any, str], Optional[str]]) -> List[str]:
+    def analyze(self, dependency_files: Dict[str, str]) -> List[str]:
         dependencies = set()
         
-        # Strategy: Try to fetch common dependency files and parse them.
-        
         # 1. Python (requirements.txt)
-        req_txt = fetch_content_func(repo_obj, "requirements.txt")
+        req_txt = dependency_files.get("requirements.txt")
         if req_txt:
             for line in req_txt.split('\n'):
                 line = line.strip()
                 if line and not line.startswith('#'):
-                    # Regex to capture package name at start of line, ignoring version specifiers
-                    # e.g. "flask==2.0.1" -> "flask"
-                    # e.g. "requests>=2.0" -> "requests"
                     match = re.match(r'^([a-zA-Z0-9\-_]+)', line)
                     if match:
                         dependencies.add(match.group(1))
 
+        # Python (pyproject.toml)
+        pyproject = dependency_files.get("pyproject.toml")
+        if pyproject:
+            in_deps = False
+            for line in pyproject.split('\n'):
+                line = line.strip()
+                if line.startswith("[") and line.endswith("]"):
+                    if "dependencies" in line and ("tool.poetry" in line or "project" in line):
+                        in_deps = True
+                    else:
+                        in_deps = False
+                    continue
+                
+                if in_deps and line and not line.startswith("#"):
+                    match = re.match(r'^([a-zA-Z0-9\-_]+)\s*=', line)
+                    if match:
+                         dependencies.add(match.group(1))
+
         # 2. Node.js (package.json)
-        pkg_json = fetch_content_func(repo_obj, "package.json")
+        pkg_json = dependency_files.get("package.json")
         if pkg_json:
             try:
                 data = json.loads(pkg_json)
@@ -71,6 +88,92 @@ class DependencyCollector:
                     dependencies.update(dev_deps.keys())
             except json.JSONDecodeError:
                 pass
+
+        # 3. Go (go.mod)
+        go_mod = dependency_files.get("go.mod")
+        if go_mod:
+             matches = re.findall(r'^\s*([a-zA-Z0-9\.\-/]+)\s+v', go_mod, re.MULTILINE)
+             dependencies.update(matches)
+
+        # 4. Rust (Cargo.toml)
+        cargo_toml = dependency_files.get("Cargo.toml")
+        if cargo_toml:
+            in_deps = False
+            for line in cargo_toml.split('\n'):
+                line = line.strip()
+                if line == "[dependencies]":
+                    in_deps = True
+                    continue
+                if line.startswith("[") and line != "[dependencies]":
+                    in_deps = False
+                
+                if in_deps and line and not line.startswith("#"):
+                     match = re.match(r'^([a-zA-Z0-9\-_]+)\s*=', line)
+                     if match:
+                         dependencies.add(match.group(1))
+
+        # 5. Java (pom.xml)
+        pom_xml = dependency_files.get("pom.xml")
+        if pom_xml:
+            matches = re.findall(r'<artifactId>([a-zA-Z0-9\.\-_]+)</artifactId>', pom_xml)
+            dependencies.update(matches)
+
+        # 6. PHP (composer.json)
+        composer = dependency_files.get("composer.json")
+        if composer:
+            try:
+                data = json.loads(composer)
+                deps = data.get('require', {})
+                if isinstance(deps, dict):
+                    dependencies.update([k for k in deps.keys() if k.lower() != 'php'])
+            except json.JSONDecodeError:
+                pass
         
-        # Limit to reasonable number to avoid clutter
         return sorted(list(dependencies))[:30]
+
+class GitHistoryCollector:
+    """
+    Analyzes commit history to extract development patterns.
+    Deprecated: Use CommitHygieneAnalyzer in insight_engine.py
+    """
+    def analyze(self, history: List[Dict[str, Any]]) -> Dict[str, Any]:
+        if not history:
+            return {
+                "commit_frequency": 0.0,
+                "conventional_commits_ratio": 0.0,
+                "average_message_length": 0.0
+            }
+        
+        total_len = sum(len(c.get("message", "")) for c in history)
+        avg_len = total_len / len(history)
+        
+        cc_pattern = r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+'
+        cc_count = sum(1 for c in history if re.match(cc_pattern, c.get("message", "").strip()))
+        cc_ratio = cc_count / len(history)
+        
+        dates = []
+        for c in history:
+            d_str = c.get("date")
+            if d_str:
+                try:
+                    dates.append(datetime.fromisoformat(d_str.replace("Z", "+00:00")))
+                except ValueError:
+                    pass
+        
+        freq = 0.0
+        if len(dates) >= 2:
+            dates.sort()
+            delta = dates[-1] - dates[0]
+            days = delta.total_seconds() / 86400
+            if days > 0:
+                freq = len(dates) / days
+            else:
+                freq = float(len(dates))
+        elif len(dates) == 1:
+            freq = 1.0
+            
+        return {
+            "commit_frequency": round(freq, 2),
+            "conventional_commits_ratio": round(cc_ratio, 2),
+            "average_message_length": round(avg_len, 1)
+        }

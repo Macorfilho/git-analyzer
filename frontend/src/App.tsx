@@ -9,6 +9,14 @@ import ReactMarkdown from 'react-markdown';
 const App: React.FC = () => {
   const { data, loading, error, status, analyzeProfile } = useGithubAnalysis();
 
+  const codeHygieneScore = React.useMemo(() => {
+    if (!data?.details?.repositories) return 0;
+    const repos = data.details.repositories;
+    if (repos.length === 0) return 0;
+    const totalRatio = repos.reduce((acc, repo) => acc + (repo.conventional_commits_ratio || 0), 0);
+    return Math.round((totalRatio / repos.length) * 100);
+  }, [data]);
+
   const getStatusMessage = () => {
       switch(status) {
           case 'queued': return 'Analysis queued...';
@@ -67,11 +75,12 @@ const App: React.FC = () => {
                   <ReactMarkdown>{data.summary}</ReactMarkdown>
                </div>
 
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+               <div className="grid grid-cols-2 md:grid-cols-5 gap-6">
                   <ScoreCard score={data.overall_score} label="Overall Score" />
                   <ScoreCard score={data.profile_score} label="Profile Health" />
-                  <ScoreCard score={data.readme_score} label="README Quality" />
+                  <ScoreCard score={data.readme_score} label="Repo Documentation" />
                   <ScoreCard score={data.repo_quality_score} label="Repo Standards" />
+                  <ScoreCard score={codeHygieneScore} label="Code Hygiene" />
                </div>
             </div>
             

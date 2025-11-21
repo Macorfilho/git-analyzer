@@ -1,99 +1,152 @@
 import os
+import base64
+import concurrent.futures
+from typing import Optional, List, Dict, Any
 from github import Github, GithubException, UnknownObjectException
 from app.core.interfaces import IGithubProvider
 from app.models.dtos import UserProfile, Repository
-from app.services.collectors import StructureCollector, DependencyCollector
-from typing import Optional, List
-import base64
 
 class GithubProvider(IGithubProvider):
     """
     Concrete implementation of IGithubProvider using PyGithub.
+    Refactored to be a pure, high-performance data fetcher.
     """
     
     def __init__(self, token: Optional[str] = None):
-        # Initialize PyGithub with a token (optional but recommended)
-        # If no token is provided, it uses unauthenticated requests (lower rate limits)
         self.client = Github(token)
-        self.structure_collector = StructureCollector()
-        self.dependency_collector = DependencyCollector()
+        self.max_workers = 10  # Optimize for I/O bound tasks
 
-    def fetch_file_content(self, repo, filepath: str) -> Optional[str]:
-        """
-        Fetches the raw string content of a file from the repository.
-        Returns None if the file does not exist.
-        """
+    def _fetch_content(self, repo, filepath: str) -> Optional[str]:
+        """Helper to fetch and decode file content."""
         try:
             content_file = repo.get_contents(filepath)
-            # content_file can be a list if filepath is a directory, handle that
             if isinstance(content_file, list):
                 return None
             return base64.b64decode(content_file.content).decode('utf-8')
-        except UnknownObjectException:
-            return None
-        except Exception as e:
-            # print(f"Error fetching {filepath} from {repo.name}: {e}")
+        except Exception:
             return None
 
-    def fetch_repo_structure(self, repo) -> List[str]:
+    def _fetch_repo_data(self, repo) -> Repository:
         """
-        Returns a simplified list of root files/folders in the repository.
+        Fetches all raw data for a single repository.
+        Executed in parallel.
         """
+        # 1. Fetch File Tree (Recursive)
+        # Use get_git_tree to get the full tree. This allows deep mining for StructureCollector.
+        file_tree = []
         try:
-            contents = repo.get_contents("")
-            return [c.name for c in contents]
-        except Exception as e:
-            # print(f"Error fetching structure for {repo.name}: {e}")
-            return []
+            # Get the SHA of the default branch
+            branch = repo.get_branch(repo.default_branch)
+            tree = repo.get_git_tree(branch.commit.sha, recursive=True)
+            file_tree = [element.path for element in tree.tree]
+        except Exception:
+            # Fallback to root contents if tree fetch fails (e.g., empty repo or too large)
+            try:
+                contents = repo.get_contents("")
+                file_tree = [c.name for c in contents]
+            except Exception:
+                pass
+
+        # 2. Fetch Dependency Files
+        # Check if the file exists in the tree (checking mostly for root existence or simple paths)
+        target_files = [
+            "requirements.txt", "package.json", "go.mod", "Cargo.toml", 
+            "pom.xml", "pyproject.toml", "composer.json"
+        ]
+        dependency_files = {}
+        for fname in target_files:
+            # Check if the file exists in the fetched tree
+            if fname in file_tree:
+                content = self._fetch_content(repo, fname)
+                if content:
+                    dependency_files[fname] = content
+
+        # 3. Fetch Repository README
+        readme_content = None
+        try:
+            # get_readme() handles finding README.md, readme.txt, etc.
+            readme = repo.get_readme()
+            readme_content = base64.b64decode(readme.content).decode('utf-8')
+        except Exception:
+            pass
+
+        # 4. Fetch Commit History (Last 15)
+        commit_history = []
+        try:
+            commits = repo.get_commits()[:15]
+            for commit in commits:
+                commit_history.append({
+                    "sha": commit.sha,
+                    "message": commit.commit.message,
+                    "date": commit.commit.author.date.isoformat(),
+                    "author": commit.commit.author.name
+                })
+        except Exception:
+            pass
+
+        return Repository(
+            name=repo.name,
+            description=repo.description,
+            language=repo.language,
+            stargazers_count=repo.stargazers_count,
+            forks_count=repo.forks_count,
+            updated_at=repo.updated_at.isoformat(),
+            html_url=repo.html_url,
+            has_ci=False,      # To be determined by analyzer
+            has_docker=False,  # To be determined by analyzer
+            has_tests=False,   # To be determined by analyzer
+            has_license=False, # To be determined by analyzer
+            dependencies=[],   # To be determined by analyzer
+            file_tree=file_tree,
+            dependency_files=dependency_files,
+            readme_content=readme_content,
+            commit_history=commit_history
+        )
 
     def get_user_profile(self, username: str) -> UserProfile:
         try:
             user = self.client.get_user(username)
             
-            # Fetch Repositories
-            repos_data = []
-            # We explicitly fetch non-forked repos or all, depending on logic.
-            # For simplicity, we fetch public repos.
-            for repo in user.get_repos(type='owner', sort='updated', direction='desc'):
-                # Limit to top 10 to balance depth of analysis with rate limits
-                if len(repos_data) >= 10:
+            # Fetch top 15 repositories
+            # Sort by updated to get most relevant/active
+            repos_iterable = user.get_repos(type='owner', sort='updated', direction='desc')
+            
+            # We need to convert the paginated list to a standard list to slice it, 
+            # but getting all might be slow if user has 100s. 
+            # PyGithub PaginatedList is lazy, slicing it `[:15]` fetches only the first page(s).
+            target_repos = []
+            count = 0
+            for repo in repos_iterable:
+                target_repos.append(repo)
+                count += 1
+                if count >= 15:
                     break
-                
-                # 1. Fetch Structure & Analyze Flags
-                structure = self.fetch_repo_structure(repo)
-                flags = self.structure_collector.analyze(structure)
-                
-                # 2. Fetch Dependencies
-                dependencies = self.dependency_collector.analyze(repo, self.fetch_file_content)
+            
+            # Parallel Fetching
+            repositories_data = []
+            with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                future_to_repo = {executor.submit(self._fetch_repo_data, repo): repo for repo in target_repos}
+                for future in concurrent.futures.as_completed(future_to_repo):
+                    try:
+                        data = future.result()
+                        repositories_data.append(data)
+                    except Exception as exc:
+                        repo = future_to_repo[future]
+                        print(f"Repo {repo.name} generated an exception: {exc}")
 
-                repos_data.append(Repository(
-                    name=repo.name,
-                    description=repo.description,
-                    language=repo.language,
-                    stargazers_count=repo.stargazers_count,
-                    forks_count=repo.forks_count,
-                    updated_at=repo.updated_at.isoformat(),
-                    html_url=repo.html_url,
-                    has_ci=flags['has_ci'],
-                    has_docker=flags['has_docker'],
-                    has_tests=flags['has_tests'],
-                    has_license=flags['has_license'],
-                    dependencies=dependencies
-                ))
+            # Sort back by updated_at (parallel execution might scramble order)
+            repositories_data.sort(key=lambda x: x.updated_at, reverse=True)
 
             # Fetch Profile README
-            readme_content = None
+            profile_readme = None
             try:
-                # Try to find a repo with the same name as the user (special profile repo)
                 profile_repo = user.get_repo(username)
                 readme = profile_repo.get_readme()
-                readme_content = base64.b64decode(readme.content).decode('utf-8')
+                profile_readme = base64.b64decode(readme.content).decode('utf-8')
             except UnknownObjectException:
-                # Profile README doesn't exist
                 pass
-            except Exception as e:
-                # Log warning ideally
-                print(f"Warning: Could not fetch README for {username}: {e}")
+            except Exception:
+                pass
 
             return UserProfile(
                 username=user.login,
@@ -105,8 +158,8 @@ class GithubProvider(IGithubProvider):
                 following=user.following,
                 avatar_url=user.avatar_url,
                 html_url=user.html_url,
-                readme_content=readme_content,
-                repositories=repos_data
+                readme_content=profile_readme,
+                repositories=repositories_data
             )
 
         except UnknownObjectException:

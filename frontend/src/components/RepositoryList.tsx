@@ -12,6 +12,13 @@ const RepositoryList: React.FC<RepositoryListProps> = ({ repositories }) => {
     // Sort by maturity score desc
     const sortedRepos = [...repositories].sort((a, b) => b.maturity_score - a.maturity_score);
 
+    const isGhostProject = (repo: Repository) => {
+        const lastUpdate = new Date(repo.updated_at);
+        const oneYearAgo = new Date();
+        oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+        return lastUpdate < oneYearAgo;
+    };
+
     return (
         <div className="mb-12">
             <h3 className="text-xl font-light mb-6 text-gray-900 tracking-tight">Top Repositories</h3>
@@ -22,7 +29,15 @@ const RepositoryList: React.FC<RepositoryListProps> = ({ repositories }) => {
                             <a href={repo.html_url} target="_blank" rel="noopener noreferrer" className="text-blue-600 font-medium hover:underline truncate pr-2">
                                 {repo.name}
                             </a>
-                            <MaturityBadge label={repo.maturity_label} score={repo.maturity_score} />
+                            <div className="flex items-center gap-2 flex-shrink-0">
+                                {repo.maturity_score > 80 && (
+                                    <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Top Quality</span>
+                                )}
+                                {isGhostProject(repo) && (
+                                    <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Ghost Project</span>
+                                )}
+                                <MaturityBadge label={repo.maturity_label} score={repo.maturity_score} />
+                            </div>
                         </div>
                         <p className="text-gray-500 text-sm mb-3 line-clamp-2 h-10">
                             {repo.description || "No description provided."}
