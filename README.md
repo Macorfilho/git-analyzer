@@ -11,6 +11,7 @@ The platform analyzes a GitHub repository to generate a "Maturity Score" and spe
 *   **Python 3.9+**
 *   **Flask**: Web framework.
 *   **Redis**: Message broker for background tasks.
+*   **Ollama**: Local LLM runner for AI analysis.
 *   **Pydantic**: Data validation and settings management.
 *   **PyGithub**: Interaction with the GitHub API.
 *   **Architecture**: Modular, Service-Oriented, with background workers.
@@ -48,6 +49,7 @@ git-analyzer/
 *   Python 3.8+
 *   Node.js 16+
 *   Redis
+*   Ollama (running locally)
 *   A [GitHub Personal Access Token](https://github.com/settings/tokens) (Classic) with `public_repo` scope.
 
 ### 1. Backend Setup
@@ -113,11 +115,26 @@ npm run dev
 ```
 The UI will be available at `http://localhost:5173`.
 
+### 4. AI Setup (Ollama)
+
+This project uses **Ollama** to provide advanced profile analysis.
+
+1.  [Download and Install Ollama](https://ollama.com/download).
+2.  Start the Ollama service.
+3.  Pull the required model (default is `llama3`):
+    ```bash
+    ollama pull llama3
+    ```
+    *Note: Ensure Ollama is running on port `11434` (default).*
+
 ## 🧪 Features
 
 1.  **Repository Analysis**: Kicks off an asynchronous analysis of a GitHub repository.
-2.  **Maturity Score**: Calculates a score based on repository characteristics.
-3.  **Insights and Suggestions**: Provides insights and suggestions for improving the repository.
+2.  **Maturity Score**: Calculates a score based on repository characteristics (Docs, CI/CD, Testing).
+3.  **AI Career Coach**: Uses Llama 3 (via Ollama) to act as a "Staff Software Engineer" reviewer, providing:
+    *   **Gap Analysis**: Identifying missing skills or tools.
+    *   **Career Roadmap**: Actionable steps to reach Senior/Staff level.
+    *   **Executive Summary**: A professional assessment of the profile.
 
 
 ## 📝 License
