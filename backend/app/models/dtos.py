@@ -2,10 +2,10 @@ from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
 class ScoreDetail(BaseModel):
-    value: int
-    label: str
-    pros: List[str] = []
-    cons: List[str] = []
+    score: int
+    level: str
+    positives: List[str] = []
+    negatives: List[str] = []
 
 class Repository(BaseModel):
     name: str
@@ -22,12 +22,12 @@ class Repository(BaseModel):
     dependencies: List[str] = []
     
     # Scores as Detailed Objects
-    maturity_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="Hobby"))
-    repo_documentation_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="None"))
-    code_hygiene_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="Standard"))
+    maturity_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(score=0, level="Hobby"))
+    repo_documentation_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(score=0, level="None"))
+    code_hygiene_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(score=0, level="Standard"))
     
-    # Deprecated/Derived Simple Fields (Optional: keep for backward compat if needed, or remove. Removing to force update)
-    maturity_label: str = "Hobby" # We can sync this with score.label
+    # Deprecated/Derived Simple Fields
+    maturity_label: str = "Hobby"
     
     # Metrics
     conventional_commits_ratio: float = 0.0

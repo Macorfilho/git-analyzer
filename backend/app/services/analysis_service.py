@@ -26,15 +26,16 @@ class AnalysisService:
         user_profile = self.github_provider.get_user_profile(username)
         
         from app.models.dtos import ScoreDetail
+        from collections import Counter
 
         # 2. Run Insights (Maturity & Tech Stack)
         repo_docs_values = []
-        repo_docs_pros = set()
-        repo_docs_cons = set()
+        all_repo_docs_pros = []
+        all_repo_docs_cons = []
         
         hygiene_values = []
-        hygiene_pros = set()
-        hygiene_cons = set()
+        all_hygiene_pros = []
+        all_hygiene_cons = []
         
         for repo in user_profile.repositories:
             # Run Collectors
@@ -51,55 +52,100 @@ class AnalysisService:
             repo.commit_frequency = avg_days
             repo.conventional_commits_ratio = cc_ratio
             repo.code_hygiene_score = hygiene_detail
-            repo.recommendations.extend(hygiene_detail.cons) # Add hygiene gaps to recommendations
+            repo.recommendations.extend(list(set(hygiene_detail.negatives))) # Add unique hygiene gaps
             
-            hygiene_values.append(hygiene_detail.value)
-            hygiene_pros.update(hygiene_detail.pros)
-            hygiene_cons.update(hygiene_detail.cons)
+            hygiene_values.append(hygiene_detail.score)
+            all_hygiene_pros.extend(hygiene_detail.positives)
+            all_hygiene_cons.extend(hygiene_detail.negatives)
             
             # Repo Documentation
             doc_detail = self.repo_doc_analyzer.analyze(repo)
             repo.repo_documentation_score = doc_detail
             
-            repo_docs_values.append(doc_detail.value)
-            repo_docs_pros.update(doc_detail.pros)
-            repo_docs_cons.update(doc_detail.cons)
+            repo_docs_values.append(doc_detail.score)
+            all_repo_docs_pros.extend(doc_detail.positives)
+            all_repo_docs_cons.extend(doc_detail.negatives)
             
             # Maturity
             maturity_detail = self.maturity_analyzer.analyze(repo)
             repo.maturity_score = maturity_detail
-            repo.maturity_label = maturity_detail.label
-            repo.recommendations.extend(maturity_detail.cons) # Add maturity gaps to recommendations
+            repo.maturity_label = maturity_detail.level
+            repo.recommendations.extend(list(set(maturity_detail.negatives))) # Add unique maturity gaps
             
         tech_stack = self.tech_stack_analyzer.analyze(user_profile.repositories)
         
-        # Calculate Aggregates for AnalysisReport
+        # Helper to aggregate feedback smartly
+        def aggregate_feedback(pros_list, cons_list, total_repos):
+            final_pros = []
+            final_cons = []
+            
+            pros_counts = Counter(pros_list)
+            cons_counts = Counter(cons_list)
+            
+            # Threshold: trait must appear in > 40% of repos to be "dominant"
+            threshold = total_repos * 0.4 if total_repos > 0 else 0
+            
+            dominant_pros = {k for k, v in pros_counts.items() if v > threshold}
+            dominant_cons = {k for k, v in cons_counts.items() if v > threshold}
+            
+            # Conflict Resolution
+            # Hygiene Conflicts
+            if "Excellent commit frequency (Active)" in dominant_pros and "Low commit frequency (> 30 days between commits)" in dominant_cons:
+                final_cons.append("Inconsistent commit frequency across repositories")
+                dominant_pros.discard("Excellent commit frequency (Active)")
+                dominant_cons.discard("Low commit frequency (> 30 days between commits)")
+            
+            if "Descriptive commit messages" in dominant_pros and "Commit messages are too short/vague" in dominant_cons:
+                final_cons.append("Inconsistent commit message quality")
+                dominant_pros.discard("Descriptive commit messages")
+                dominant_cons.discard("Commit messages are too short/vague")
+
+            # Docs Conflicts
+            if "Detailed README content" in dominant_pros and "Short README content" in dominant_cons:
+                final_cons.append("Inconsistent documentation depth")
+                dominant_pros.discard("Detailed README content")
+                dominant_cons.discard("Short README content")
+
+            final_pros.extend(list(dominant_pros))
+            final_cons.extend(list(dominant_cons))
+            
+            # Fallback: Ensure we show negatives if they exist but were filtered out
+            if not final_cons and cons_counts:
+                 final_cons.extend([k for k, v in cons_counts.most_common(3)])
+            
+            return final_pros[:5], final_cons[:5]
+
+        total_repos = len(user_profile.repositories)
+        
+        # Aggregates for AnalysisReport
         
         # Avg Repo Docs
         avg_doc_val = int(sum(repo_docs_values) / len(repo_docs_values)) if repo_docs_values else 0
+        agg_doc_pros, agg_doc_cons = aggregate_feedback(all_repo_docs_pros, all_repo_docs_cons, total_repos)
+        
         avg_doc_detail = ScoreDetail(
-            value=avg_doc_val,
-            label="Average",
-            pros=list(repo_docs_pros)[:5], # Top 5 unique pros
-            cons=list(repo_docs_cons)[:5]
+            score=avg_doc_val,
+            level="Average",
+            positives=agg_doc_pros,
+            negatives=agg_doc_cons
         )
         
         # Avg Hygiene
         avg_hyg_val = int(sum(hygiene_values) / len(hygiene_values)) if hygiene_values else 0
+        agg_hyg_pros, agg_hyg_cons = aggregate_feedback(all_hygiene_pros, all_hygiene_cons, total_repos)
+        
         avg_hyg_detail = ScoreDetail(
-            value=avg_hyg_val,
-            label="Average",
-            pros=list(hygiene_pros)[:5],
-            cons=list(hygiene_cons)[:5]
+            score=avg_hyg_val,
+            level="Average",
+            positives=agg_hyg_pros,
+            negatives=agg_hyg_cons
         )
             
         # Analyze Personal README
         personal_readme_detail = self.profile_readme_analyzer.analyze(user_profile.readme_content or "")
 
         # 3. Prepare Context for LLM
-        # We pass integer values to context builder for simplicity, or update it to use details. 
-        # For now, passing integers is safer for existing prompt logic unless we update prompt.
-        context = self._prepare_context(user_profile, tech_stack, avg_doc_val, personal_readme_detail.value, avg_hyg_val)
+        context = self._prepare_context(user_profile, tech_stack, avg_doc_val, personal_readme_detail.score, avg_hyg_val)
 
         # 4. Generate Analysis via LLM
         llm_result = self.llm_provider.generate_analysis(context)
@@ -111,13 +157,13 @@ class AnalysisService:
         # We can wrap them in basic ScoreDetails for now.
         
         profile_score_val = int(llm_result.get("profile_score", 0))
-        profile_score_detail = ScoreDetail(value=profile_score_val, label="AI Generated", pros=["Based on comprehensive analysis"], cons=[])
+        profile_score_detail = ScoreDetail(score=profile_score_val, level="AI Generated", positives=["Based on comprehensive analysis"], negatives=[])
         
         repo_quality_val = int(llm_result.get("repo_quality_score", 0))
-        repo_quality_detail = ScoreDetail(value=repo_quality_val, label="AI Generated", pros=[], cons=[])
+        repo_quality_detail = ScoreDetail(score=repo_quality_val, level="AI Generated", positives=[], negatives=[])
 
         overall_val = int(llm_result.get("overall_score", 0))
-        overall_detail = ScoreDetail(value=overall_val, label="AI Generated", pros=[], cons=[])
+        overall_detail = ScoreDetail(score=overall_val, level="AI Generated", positives=[], negatives=[])
 
         details = {
             "repo_count": len(user_profile.repositories),
@@ -179,24 +225,24 @@ class AnalysisService:
             
             # Maturity & Hygiene labels
             # repo.maturity_score is now a ScoreDetail object
-            maturity_info = f"{repo.maturity_score.label} (Score: {repo.maturity_score.value})"
+            maturity_info = f"{repo.maturity_score.level} (Score: {repo.maturity_score.score})"
             
             hygiene_label_from_score = "Messy"
             # repo.code_hygiene_score is now a ScoreDetail object
-            if repo.code_hygiene_score.value >= 80:
+            if repo.code_hygiene_score.score >= 80:
                 hygiene_label_from_score = "Professional"
-            elif repo.code_hygiene_score.value >= 60:
+            elif repo.code_hygiene_score.score >= 60:
                 hygiene_label_from_score = "Hygiene"
-            elif repo.code_hygiene_score.value >= 40:
+            elif repo.code_hygiene_score.score >= 40:
                 hygiene_label_from_score = "Active"
             
             # Docs Details
             docs_label = "Weak"
             docs_missing = []
             # repo.repo_documentation_score is now a ScoreDetail object
-            if repo.repo_documentation_score.value > 80:
+            if repo.repo_documentation_score.score > 80:
                 docs_label = "Strong"
-            elif repo.repo_documentation_score.value > 50:
+            elif repo.repo_documentation_score.score > 50:
                 docs_label = "Adequate"
             
             # Check for missing specific sections based on score content
@@ -209,7 +255,7 @@ class AnalysisService:
                 if "installation" not in lower_readme and "getting started" not in lower_readme:
                     docs_missing.append("'Installation'")
             
-            docs_detail = f"{docs_label} (Score: {repo.repo_documentation_score.value})"
+            docs_detail = f"{docs_label} (Score: {repo.repo_documentation_score.score})"
             if docs_missing:
                 docs_detail += f" (Missing {', '.join(docs_missing)} section)"
             
@@ -217,7 +263,7 @@ class AnalysisService:
             prefix = ""
             
             # Ghost Project: Low maturity & inactive > 1 year
-            if repo.maturity_score.value < 30 and days_since_update > 365:
+            if repo.maturity_score.score < 30 and days_since_update > 365:
                 prefix = "[GHOST PROJECT] "
                 status_str = "Ghost"
 
@@ -227,7 +273,7 @@ class AnalysisService:
                 f"Stack: {stack_str} | "
                 f"Maturity: {maturity_info} | "
                 f"Docs: {docs_detail} | "
-                f"Hygiene: {hygiene_label_from_score} (Score: {repo.code_hygiene_score.value}) | "
+                f"Hygiene: {hygiene_label_from_score} (Score: {repo.code_hygiene_score.score}) | "
                 f"Status: {status_str} (Updated {days_since_update} days ago)"
             )
             repo_narratives.append(line)

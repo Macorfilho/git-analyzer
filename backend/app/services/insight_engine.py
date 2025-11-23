@@ -9,11 +9,11 @@ class ProfileReadmeAnalyzer:
     """
     def analyze(self, content: str) -> ScoreDetail:
         score = 0
-        pros = []
-        cons = []
+        positives = []
+        negatives = []
         
         if not content:
-            return ScoreDetail(value=0, label="Missing", cons=["No README found"])
+            return ScoreDetail(score=0, level="Missing", negatives=["No README found"])
             
         lower_content = content.lower()
         
@@ -22,107 +22,112 @@ class ProfileReadmeAnalyzer:
         # "About Me" / "Introduction"
         if "about me" in lower_content or "introduction" in lower_content or "hi, i'm" in lower_content:
             score += 20
-            pros.append("Includes 'About Me' / Introduction")
+            positives.append("Includes 'About Me' / Introduction")
         else:
-            cons.append("Missing 'About Me' section")
+            negatives.append("Missing 'About Me' section")
             
         # "Tech Stack" / "Skills"
         if "tech stack" in lower_content or "skills" in lower_content or "technologies" in lower_content or "tools" in lower_content:
             score += 20
-            pros.append("Lists Tech Stack / Skills")
+            positives.append("Lists Tech Stack / Skills")
         else:
-            cons.append("Missing Tech Stack / Skills section")
+            negatives.append("Missing Tech Stack / Skills section")
             
         # "Contact" / "Socials"
         if "contact" in lower_content or "social" in lower_content or "connect with me" in lower_content:
             score += 20
-            pros.append("Includes Contact / Social links")
+            positives.append("Includes Contact / Social links")
         else:
-            cons.append("Missing Contact / Socials section")
+            negatives.append("Missing Contact / Socials section")
             
         # "Stats" / "Badges" (GitHub Stats images)
         if "github-readme-stats" in lower_content or "github-profile-trophy" in lower_content or "github-trophy" in lower_content or "streak-stats" in lower_content or "metrics" in lower_content:
             score += 20
-            pros.append("Uses GitHub Stats / Badges")
+            positives.append("Uses GitHub Stats / Badges")
         else:
-            cons.append("No GitHub Stats or Badges found")
+            negatives.append("No GitHub Stats or Badges found")
             
         # 2. Length Bonus (+20)
         if len(content) > 500:
             score += 20
-            pros.append("Detailed content (> 500 chars)")
+            positives.append("Detailed content (> 500 chars)")
         else:
-            cons.append("Content is brief (< 500 chars)")
+            negatives.append("Content is brief (< 500 chars)")
             
         final_score = min(score, 100)
-        label = "Strong" if final_score >= 80 else "Adequate" if final_score >= 40 else "Weak"
+        level = "Strong" if final_score >= 80 else "Adequate" if final_score >= 40 else "Weak"
         
-        return ScoreDetail(value=final_score, label=label, pros=pros, cons=cons)
+        return ScoreDetail(score=final_score, level=level, positives=positives, negatives=negatives)
 
 class RepoDocumentationAnalyzer:
     """
-    Scores the quality of a repository's documentation.
+    Scores the quality of a repository's documentation with multi-language support.
     """
     def analyze(self, repo: Repository) -> ScoreDetail:
         score = 0
-        pros = []
-        cons = []
+        positives = []
+        negatives = []
         
         readme = repo.readme_content or ""
         
         if not readme:
-            return ScoreDetail(value=0, label="Missing", cons=["No README found"])
+            return ScoreDetail(score=0, level="Missing", negatives=["No README found"])
         
         # Length Check
         if len(readme) > 500:
             score += 10
-            pros.append("Detailed README content")
+            positives.append("Detailed README content")
         else:
-            cons.append("Short README content")
+            negatives.append("Short README content")
             
-        # Header Checks (Case Insensitive)
+        # Header Checks (Multi-language: English, Portuguese, Spanish)
         lower_readme = readme.lower()
-        target_headers = ["installation", "usage", "getting started", "api", "contributing"]
-        found_headers = []
-        missing_headers = []
         
-        for h in target_headers:
-            if h in lower_readme:
-                found_headers.append(h.title())
+        header_groups = {
+            "Installation": ["installation", "instalação", "instalación", "setup", "configuração"],
+            "Usage": ["usage", "uso", "utilização", "how to run", "como rodar"],
+            "Getting Started": ["getting started", "começando", "primeiros passos", "empezando"],
+            "API/Docs": ["api", "documentation", "documentação", "documentación", "docs"],
+            "Contributing": ["contributing", "contribuição", "contribuyendo", "contribute"]
+        }
+        
+        found_sections = []
+        missing_sections = []
+        
+        for section_name, keywords in header_groups.items():
+            if any(k in lower_readme for k in keywords):
+                score += 10
+                found_sections.append(section_name)
             else:
-                missing_headers.append(h.title())
+                missing_sections.append(section_name)
                 
-        score += (len(found_headers) * 10)
-        if found_headers:
-            pros.append(f"Contains sections: {', '.join(found_headers)}")
-        if missing_headers:
-            cons.append(f"Missing sections: {', '.join(missing_headers)}")
+        if found_sections:
+            positives.append(f"Contains sections: {', '.join(found_sections)}")
+        if missing_sections:
+            negatives.append(f"Missing sections: {', '.join(missing_sections)}")
         
         # Code Blocks Check
         if "```" in readme:
             score += 20
-            pros.append("Includes code blocks/examples")
+            positives.append("Includes code blocks/examples")
         else:
-            cons.append("No code blocks/examples found")
+            negatives.append("No code blocks/examples found")
         
         final_score = min(score, 100)
-        label = "Excellent" if final_score >= 80 else "Good" if final_score >= 50 else "Basic"
+        level = "Excellent" if final_score >= 80 else "Good" if final_score >= 50 else "Basic"
         
-        return ScoreDetail(value=final_score, label=label, pros=pros, cons=cons)
+        return ScoreDetail(score=final_score, level=level, positives=positives, negatives=negatives)
 
 class CommitHygieneAnalyzer:
     """
     Analyzes commit history for consistency and professional standards.
     """
     def analyze(self, history: List[Dict[str, Any]]) -> Tuple[ScoreDetail, float, float]:
-        # Returns (ScoreDetail, cc_ratio, avg_days) - maintaining tuple for backward compat in service unpacking if needed, 
-        # but ScoreDetail encapsulates the score.
-        
-        pros = []
-        cons = []
+        positives = []
+        negatives = []
         
         if not history:
-            return ScoreDetail(value=0, label="Inactive", cons=["No commit history"]), 0.0, 0.0
+            return ScoreDetail(score=0, level="Inactive", negatives=["No commit history"]), 0.0, 0.0
 
         # 1. Calculate Metrics
         cc_pattern = r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+'
@@ -153,43 +158,43 @@ class CommitHygieneAnalyzer:
         # Frequency (40pts)
         if avg_days < 7:
             score += 40
-            pros.append("High commit frequency (< 7 days)")
+            positives.append("Excellent commit frequency (Active)")
         elif avg_days < 30:
             score += 20
-            pros.append("Moderate commit frequency (< 30 days)")
+            positives.append("Moderate commit frequency")
         else:
-            cons.append("Low commit frequency (> 30 days)")
+            negatives.append("Low commit frequency (> 30 days between commits)")
             
         # Message Length (30pts)
         if avg_msg_len > 15:
             score += 30
-            pros.append("Good commit message length")
+            positives.append("Descriptive commit messages")
         else:
-            cons.append("Commit messages are too short")
+            negatives.append("Commit messages are too short/vague")
             
         # Convention (30pts)
         score += int(cc_ratio * 30)
         if cc_ratio > 0.5:
-            pros.append("High usage of Conventional Commits")
+            positives.append("Strong adherence to Conventional Commits")
         elif cc_ratio > 0.2:
-            pros.append("Some usage of Conventional Commits")
+            positives.append("Partial usage of Conventional Commits")
         else:
-            cons.append("Low usage of Conventional Commits")
+            negatives.append("Lack of Conventional Commits (feat:, fix:)")
         
         # 3. Classification
-        label = "Standard"
+        level = "Standard"
         if score >= 80:
-            label = "Professional"
+            level = "Professional"
         elif score >= 60:
-            label = "Hygiene"
+            level = "Hygiene"
         elif score >= 40:
-            label = "Active"
+            level = "Active"
         elif avg_days > 60:
-            label = "Inactive"
+            level = "Inactive"
         else:
-            label = "Standard"
+            level = "Standard"
 
-        return ScoreDetail(value=score, label=label, pros=pros, cons=cons), cc_ratio, avg_days
+        return ScoreDetail(score=score, level=level, positives=positives, negatives=negatives), cc_ratio, avg_days
 
 class MaturityAnalyzer:
     """
@@ -197,54 +202,54 @@ class MaturityAnalyzer:
     """
     def analyze(self, repo: Repository) -> ScoreDetail:
         score = 0
-        pros = []
-        cons = [] # These will act as recommendations
+        positives = []
+        negatives = [] # These will act as recommendations
 
         # Technical signals
         if repo.has_ci:
             score += 20
-            pros.append("CI/CD configured")
+            positives.append("CI/CD configured (GitHub Actions, etc.)")
         else:
-            cons.append("Missing CI/CD configuration")
+            negatives.append("Add CI/CD pipelines (e.g., GitHub Actions)")
             
         if repo.has_tests:
             score += 20
-            pros.append("Tests detected")
+            positives.append("Testing framework detected")
         else:
-            cons.append("No tests detected")
+            negatives.append("Implement automated tests")
             
         if repo.has_docker:
             score += 10
-            pros.append("Containerization (Docker) detected")
+            positives.append("Containerization (Docker) detected")
         else:
-            cons.append("No Docker/Containerization")
+            negatives.append("Add Dockerfile for containerization")
             
         if repo.has_license:
             score += 10
-            pros.append("License file present")
+            positives.append("License file present")
         else:
-            cons.append("Missing License")
+            negatives.append("Add a License file")
             
         # DevOps Synergy Bonus
         if repo.has_ci and repo.has_tests:
             score += 15
-            pros.append("DevOps Synergy (CI + Tests)")
+            positives.append("DevOps Synergy (CI + Tests)")
             
         # Description heuristic
         if repo.description:
             score += 5
             if len(repo.description) > 30:
                 score += 5
-                pros.append("Detailed description")
+                positives.append("Detailed repository description")
             if len(repo.description) > 100:
                 score += 10
         else:
-            cons.append("Missing repository description")
+            negatives.append("Add a detailed repository description")
                 
         # Conventional Commits
         if repo.conventional_commits_ratio > 0.5:
             score += 10
-            pros.append("Consistent commit conventions")
+            positives.append("Consistent commit conventions")
         elif repo.conventional_commits_ratio > 0.2:
             score += 5
             
@@ -258,23 +263,23 @@ class MaturityAnalyzer:
             if (now - last_update).days > 365:
                 score -= 30
                 is_ghost = True
-                cons.append("Repository is inactive (> 1 year)")
+                negatives.append("Revive or archive this project (inactive > 1 year)")
         except (ValueError, TypeError):
             pass
         
         score = max(0, min(score, 100))
         
-        label = "Hobby"
+        level = "Hobby"
         if is_ghost:
-            label = "Archived/Ghost"
+            level = "Archived/Ghost"
         elif score >= 75:
-            label = "Production-Grade"
+            level = "Production-Grade"
         elif score >= 45:
-            label = "Prototype"
+            level = "Prototype"
         else:
-            label = "Hobby"
+            level = "Hobby"
             
-        return ScoreDetail(value=score, label=label, pros=pros, cons=cons)
+        return ScoreDetail(score=score, level=level, positives=positives, negatives=negatives)
 
 class TechStackAnalyzer:
     """

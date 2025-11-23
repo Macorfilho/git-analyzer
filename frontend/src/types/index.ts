@@ -10,10 +10,10 @@ export interface CareerRoadmapStep {
 }
 
 export interface ScoreDetail {
-    value: number;
-    label: string;
-    pros: string[];
-    cons: string[];
+    score: number;
+    level: string;
+    positives: string[];
+    negatives: string[];
 }
 
 export interface Repository {

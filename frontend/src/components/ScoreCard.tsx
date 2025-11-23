@@ -19,7 +19,7 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
   const stroke = 4;
   const normalizedRadius = radius - stroke * 2;
   const circumference = normalizedRadius * 2 * Math.PI;
-  const strokeDashoffset = circumference - (score.value / 100) * circumference;
+  const strokeDashoffset = circumference - (score.score / 100) * circumference;
 
   return (
     <>
@@ -50,7 +50,7 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                     />
                     <circle
                         stroke="currentColor"
-                        className={`${getColor(score.value)} transition-all duration-1000 ease-out`}
+                        className={`${getColor(score.score)} transition-all duration-1000 ease-out`}
                         strokeWidth={stroke}
                         strokeDasharray={circumference + ' ' + circumference}
                         style={{ strokeDashoffset }}
@@ -61,15 +61,15 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                         cy={radius}
                     />
                 </svg>
-                <div className={`absolute text-xl font-light ${getColor(score.value).split(' ')[0]}`}>
-                    {score.value}
+                <div className={`absolute text-xl font-light ${getColor(score.score).split(' ')[0]}`}>
+                    {score.score}
                 </div>
             </div>
             <div className="text-gray-400 text-xs uppercase tracking-widest font-medium text-center">
                 {label}
             </div>
             <div className="mt-1 text-xs text-gray-500 font-medium bg-gray-50 px-2 py-0.5 rounded-full">
-                {score.label}
+                {score.level}
             </div>
         </div>
 
@@ -80,8 +80,8 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                     <div className="flex justify-between items-start mb-4">
                         <div>
                             <h3 className="text-xl font-semibold text-gray-900">{label} Details</h3>
-                            <div className={`text-sm font-medium mt-1 ${getColor(score.value).split(' ')[0]}`}>
-                                Score: {score.value} - {score.label}
+                            <div className={`text-sm font-medium mt-1 ${getColor(score.score).split(' ')[0]}`}>
+                                Score: {score.score} - {score.level}
                             </div>
                         </div>
                         <button onClick={() => setIsOpen(false)} className="text-gray-400 hover:text-gray-600">
@@ -92,11 +92,11 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                     </div>
 
                     <div className="space-y-4">
-                        {score.pros && score.pros.length > 0 && (
+                        {score.positives && score.positives.length > 0 && (
                             <div>
                                 <h4 className="text-xs font-bold text-green-700 uppercase tracking-wider mb-2">Positives</h4>
                                 <ul className="space-y-2">
-                                    {score.pros.map((item, idx) => (
+                                    {score.positives.map((item, idx) => (
                                         <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
                                             <svg className="w-5 h-5 text-green-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
@@ -108,11 +108,11 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                             </div>
                         )}
 
-                        {score.cons && score.cons.length > 0 && (
+                        {score.negatives && score.negatives.length > 0 && (
                             <div>
                                 <h4 className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-2">Improvements Needed</h4>
                                 <ul className="space-y-2">
-                                    {score.cons.map((item, idx) => (
+                                    {score.negatives.map((item, idx) => (
                                         <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
                                             <svg className="w-5 h-5 text-amber-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
@@ -124,7 +124,7 @@ const ScoreCard: React.FC<ScoreCardProps> = ({ score, label }) => {
                             </div>
                         )}
                         
-                        {(!score.pros?.length && !score.cons?.length) && (
+                        {(!score.positives?.length && !score.negatives?.length) && (
                             <p className="text-sm text-gray-500 italic">No detailed breakdown available.</p>
                         )}
                     </div>

@@ -9,8 +9,8 @@ interface RepositoryListProps {
 const RepositoryList: React.FC<RepositoryListProps> = ({ repositories }) => {
     if (!repositories || repositories.length === 0) return null;
 
-    // Sort by maturity score desc (accessing value)
-    const sortedRepos = [...repositories].sort((a, b) => b.maturity_score.value - a.maturity_score.value);
+    // Sort by maturity score desc (accessing score)
+    const sortedRepos = [...repositories].sort((a, b) => b.maturity_score.score - a.maturity_score.score);
 
     const isGhostProject = (repo: Repository) => {
         const lastUpdate = new Date(repo.updated_at);
@@ -30,13 +30,13 @@ const RepositoryList: React.FC<RepositoryListProps> = ({ repositories }) => {
                                 {repo.name}
                             </a>
                             <div className="flex items-center gap-2 flex-shrink-0">
-                                {repo.maturity_score.value > 80 && (
+                                {repo.maturity_score.score > 80 && (
                                     <span className="text-xs font-semibold bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Top Quality</span>
                                 )}
                                 {isGhostProject(repo) && (
                                     <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">Ghost Project</span>
                                 )}
-                                <MaturityBadge label={repo.maturity_label} score={repo.maturity_score.value} />
+                                <MaturityBadge label={repo.maturity_label} score={repo.maturity_score.score} />
                             </div>
                         </div>
                         
