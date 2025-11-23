@@ -2,7 +2,7 @@ import React from 'react';
 import SearchBar from './components/SearchBar';
 import SuggestionList from './components/SuggestionList';
 import RepositoryList from './components/RepositoryList';
-import ScoreDisplay from './components/ScoreDisplay'; // New import
+import ScoreDisplay from './components/ScoreDisplay';
 import { useGithubAnalysis } from './hooks/useGithubAnalysis';
 import ReactMarkdown from 'react-markdown';
 

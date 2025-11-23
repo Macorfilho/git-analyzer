@@ -9,6 +9,13 @@ export interface CareerRoadmapStep {
     description: string;
 }
 
+export interface ScoreDetail {
+    value: number;
+    label: string;
+    pros: string[];
+    cons: string[];
+}
+
 export interface Repository {
     name: string;
     description?: string;
@@ -22,13 +29,14 @@ export interface Repository {
     has_tests: boolean;
     has_license: boolean;
     dependencies: string[];
-    maturity_score: number;
+    maturity_score: ScoreDetail;
     maturity_label: "Production-Grade" | "Prototype" | "Hobby";
     conventional_commits_ratio: number;
     commit_frequency: number;
     average_message_length: number;
-    repo_documentation_score: number;
-    code_hygiene_score: number;
+    repo_documentation_score: ScoreDetail;
+    code_hygiene_score: ScoreDetail;
+    recommendations: string[];
     is_ghost?: boolean;
 }
 
@@ -45,12 +53,12 @@ export interface AnalysisDetails {
 
 export interface AnalysisReport {
     username: string;
-    profile_score: number;
-    avg_repo_docs_score: number;
-    personal_readme_score: number;
-    repo_quality_score: number;
-    overall_score: number;
-    avg_code_hygiene_score: number;
+    profile_score: ScoreDetail;
+    avg_repo_docs_score: ScoreDetail;
+    personal_readme_score: ScoreDetail;
+    repo_quality_score: ScoreDetail;
+    overall_score: ScoreDetail;
+    avg_code_hygiene_score: ScoreDetail;
     summary: string;
     suggestions: Suggestion[];
     details: AnalysisDetails;

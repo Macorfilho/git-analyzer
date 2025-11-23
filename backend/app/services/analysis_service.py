@@ -24,62 +24,101 @@ class AnalysisService:
     def analyze_user(self, username: str) -> AnalysisReport:
         # 1. Fetch Data
         user_profile = self.github_provider.get_user_profile(username)
+        
+        from app.models.dtos import ScoreDetail
 
         # 2. Run Insights (Maturity & Tech Stack)
-        total_repo_doc_score = 0
-        total_code_hygiene_score = 0
+        repo_docs_values = []
+        repo_docs_pros = set()
+        repo_docs_cons = set()
+        
+        hygiene_values = []
+        hygiene_pros = set()
+        hygiene_cons = set()
+        
         for repo in user_profile.repositories:
             # Run Collectors
-            # Structure
-            # Updated to use file_tree
             struct_flags = self.structure_collector.analyze(repo.file_tree)
             repo.has_ci = struct_flags["has_ci"]
             repo.has_docker = struct_flags["has_docker"]
             repo.has_tests = struct_flags["has_tests"]
             repo.has_license = struct_flags["has_license"]
             
-            # Dependencies
-            # DependencyCollector now accepts the dependency_files dictionary directly
             repo.dependencies = self.dependency_collector.analyze(repo.dependency_files)
             
             # Git History (Commit Hygiene)
-            # Replaced GitHistoryCollector with CommitHygieneAnalyzer
-            hygiene_label, cc_ratio, avg_days, hygiene_score = self.commit_hygiene_analyzer.analyze(repo.commit_history)
-            repo.commit_frequency = avg_days # Renaming variable usage logic if needed, but avg_days matches conceptually roughly or we adapt
+            hygiene_detail, cc_ratio, avg_days = self.commit_hygiene_analyzer.analyze(repo.commit_history)
+            repo.commit_frequency = avg_days
             repo.conventional_commits_ratio = cc_ratio
-            repo.code_hygiene_score = hygiene_score
-            total_code_hygiene_score += hygiene_score
-            # Note: average_message_length is no longer computed by CommitHygieneAnalyzer in this spec,
-            # but we can leave it as default or compute it if strictly needed. For now, we'll trust the new analyzer's focus.
+            repo.code_hygiene_score = hygiene_detail
+            repo.recommendations.extend(hygiene_detail.cons) # Add hygiene gaps to recommendations
+            
+            hygiene_values.append(hygiene_detail.value)
+            hygiene_pros.update(hygiene_detail.pros)
+            hygiene_cons.update(hygiene_detail.cons)
             
             # Repo Documentation
-            repo.repo_documentation_score = self.repo_doc_analyzer.analyze(repo)
-            total_repo_doc_score += repo.repo_documentation_score
+            doc_detail = self.repo_doc_analyzer.analyze(repo)
+            repo.repo_documentation_score = doc_detail
+            
+            repo_docs_values.append(doc_detail.value)
+            repo_docs_pros.update(doc_detail.pros)
+            repo_docs_cons.update(doc_detail.cons)
             
             # Maturity
-            score, label = self.maturity_analyzer.analyze(repo)
-            repo.maturity_score = score
-            repo.maturity_label = label
+            maturity_detail = self.maturity_analyzer.analyze(repo)
+            repo.maturity_score = maturity_detail
+            repo.maturity_label = maturity_detail.label
+            repo.recommendations.extend(maturity_detail.cons) # Add maturity gaps to recommendations
             
         tech_stack = self.tech_stack_analyzer.analyze(user_profile.repositories)
         
-        # Calculate Aggregates
-        avg_repo_docs_score = 0
-        avg_code_hygiene_score = 0
-        if user_profile.repositories:
-            avg_repo_docs_score = int(total_repo_doc_score / len(user_profile.repositories))
-            avg_code_hygiene_score = int(total_code_hygiene_score / len(user_profile.repositories))
+        # Calculate Aggregates for AnalysisReport
+        
+        # Avg Repo Docs
+        avg_doc_val = int(sum(repo_docs_values) / len(repo_docs_values)) if repo_docs_values else 0
+        avg_doc_detail = ScoreDetail(
+            value=avg_doc_val,
+            label="Average",
+            pros=list(repo_docs_pros)[:5], # Top 5 unique pros
+            cons=list(repo_docs_cons)[:5]
+        )
+        
+        # Avg Hygiene
+        avg_hyg_val = int(sum(hygiene_values) / len(hygiene_values)) if hygiene_values else 0
+        avg_hyg_detail = ScoreDetail(
+            value=avg_hyg_val,
+            label="Average",
+            pros=list(hygiene_pros)[:5],
+            cons=list(hygiene_cons)[:5]
+        )
             
         # Analyze Personal README
-        personal_readme_score = self.profile_readme_analyzer.analyze(user_profile.readme_content or "")
+        personal_readme_detail = self.profile_readme_analyzer.analyze(user_profile.readme_content or "")
 
         # 3. Prepare Context for LLM
-        context = self._prepare_context(user_profile, tech_stack, avg_repo_docs_score, personal_readme_score, avg_code_hygiene_score)
+        # We pass integer values to context builder for simplicity, or update it to use details. 
+        # For now, passing integers is safer for existing prompt logic unless we update prompt.
+        context = self._prepare_context(user_profile, tech_stack, avg_doc_val, personal_readme_detail.value, avg_hyg_val)
 
         # 4. Generate Analysis via LLM
         llm_result = self.llm_provider.generate_analysis(context)
 
         # 5. Map to AnalysisReport
+        
+        # Parse or wrap LLM scores into ScoreDetails (LLM returns ints usually)
+        # We assume LLM returns simple ints for profile_score, repo_quality, overall.
+        # We can wrap them in basic ScoreDetails for now.
+        
+        profile_score_val = int(llm_result.get("profile_score", 0))
+        profile_score_detail = ScoreDetail(value=profile_score_val, label="AI Generated", pros=["Based on comprehensive analysis"], cons=[])
+        
+        repo_quality_val = int(llm_result.get("repo_quality_score", 0))
+        repo_quality_detail = ScoreDetail(value=repo_quality_val, label="AI Generated", pros=[], cons=[])
+
+        overall_val = int(llm_result.get("overall_score", 0))
+        overall_detail = ScoreDetail(value=overall_val, label="AI Generated", pros=[], cons=[])
+
         details = {
             "repo_count": len(user_profile.repositories),
             "followers": user_profile.followers,
@@ -92,16 +131,16 @@ class AnalysisService:
 
         return AnalysisReport(
             username=user_profile.username,
-            profile_score=int(llm_result.get("profile_score", 0)),
-            avg_repo_docs_score=avg_repo_docs_score,
-            personal_readme_score=personal_readme_score,
-            repo_quality_score=int(llm_result.get("repo_quality_score", 0)),
-            overall_score=int(llm_result.get("overall_score", 0)),
+            profile_score=profile_score_detail,
+            avg_repo_docs_score=avg_doc_detail,
+            personal_readme_score=personal_readme_detail,
+            avg_code_hygiene_score=avg_hyg_detail,
+            repo_quality_score=repo_quality_detail,
+            overall_score=overall_detail,
             summary=llm_result.get("summary", "Analysis complete."),
             suggestions=[Suggestion(**s) for s in llm_result.get("suggestions", [])],
             details=details,
-            raw_llm_response=llm_result,
-            avg_code_hygiene_score=avg_code_hygiene_score
+            raw_llm_response=llm_result
         )
 
     def _prepare_context(self, user: UserProfile, tech_stack: Dict[str, list], avg_doc_score: int, personal_readme_score: int, avg_code_hygiene_score: int) -> str:
@@ -139,22 +178,25 @@ class AnalysisService:
             stack_str = ", ".join(filter(None, stack_items))
             
             # Maturity & Hygiene labels
-            maturity_info = f"{repo.maturity_label} (Score: {repo.maturity_score})"
+            # repo.maturity_score is now a ScoreDetail object
+            maturity_info = f"{repo.maturity_score.label} (Score: {repo.maturity_score.value})"
             
             hygiene_label_from_score = "Messy"
-            if repo.code_hygiene_score >= 80:
+            # repo.code_hygiene_score is now a ScoreDetail object
+            if repo.code_hygiene_score.value >= 80:
                 hygiene_label_from_score = "Professional"
-            elif repo.code_hygiene_score >= 60:
+            elif repo.code_hygiene_score.value >= 60:
                 hygiene_label_from_score = "Hygiene"
-            elif repo.code_hygiene_score >= 40:
+            elif repo.code_hygiene_score.value >= 40:
                 hygiene_label_from_score = "Active"
             
             # Docs Details
             docs_label = "Weak"
             docs_missing = []
-            if repo.repo_documentation_score > 80:
+            # repo.repo_documentation_score is now a ScoreDetail object
+            if repo.repo_documentation_score.value > 80:
                 docs_label = "Strong"
-            elif repo.repo_documentation_score > 50:
+            elif repo.repo_documentation_score.value > 50:
                 docs_label = "Adequate"
             
             # Check for missing specific sections based on score content
@@ -167,7 +209,7 @@ class AnalysisService:
                 if "installation" not in lower_readme and "getting started" not in lower_readme:
                     docs_missing.append("'Installation'")
             
-            docs_detail = f"{docs_label} (Score: {repo.repo_documentation_score})"
+            docs_detail = f"{docs_label} (Score: {repo.repo_documentation_score.value})"
             if docs_missing:
                 docs_detail += f" (Missing {', '.join(docs_missing)} section)"
             
@@ -175,7 +217,7 @@ class AnalysisService:
             prefix = ""
             
             # Ghost Project: Low maturity & inactive > 1 year
-            if repo.maturity_score < 30 and days_since_update > 365:
+            if repo.maturity_score.value < 30 and days_since_update > 365:
                 prefix = "[GHOST PROJECT] "
                 status_str = "Ghost"
 
@@ -185,7 +227,7 @@ class AnalysisService:
                 f"Stack: {stack_str} | "
                 f"Maturity: {maturity_info} | "
                 f"Docs: {docs_detail} | "
-                f"Hygiene: {hygiene_label_from_score} (Score: {repo.code_hygiene_score}) | "
+                f"Hygiene: {hygiene_label_from_score} (Score: {repo.code_hygiene_score.value}) | "
                 f"Status: {status_str} (Updated {days_since_update} days ago)"
             )
             repo_narratives.append(line)

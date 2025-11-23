@@ -84,9 +84,10 @@ class TestNewFeatures(unittest.TestCase):
             {"date": (now - timedelta(days=3)).isoformat(), "message": "fix: resolve critical bug in system"},
             {"date": (now - timedelta(days=5)).isoformat(), "message": "docs: update readme with instructions"}
         ]
-        label, cc, avg_days = analyzer.analyze(history_perfect)
+        label, cc, avg_days, score = analyzer.analyze(history_perfect)
         self.assertEqual(label, "Professional")
         self.assertEqual(cc, 1.0)
+        self.assertEqual(score, 100)
         
         # Case 2: Low Score
         # Freq > 30 days (0pts), Msg short (0pts), Conv 0% (0pts) -> 0
@@ -94,9 +95,10 @@ class TestNewFeatures(unittest.TestCase):
             {"date": (now - timedelta(days=40)).isoformat(), "message": "fix"},
             {"date": (now - timedelta(days=80)).isoformat(), "message": "wip"}
         ]
-        label, cc, avg_days = analyzer.analyze(history_bad)
+        label, cc, avg_days, score = analyzer.analyze(history_bad)
         self.assertTrue(label in ["Inactive", "Standard"], f"Label was {label}")
         self.assertEqual(cc, 0.0)
+        self.assertEqual(score, 0)
         
         # Case 3: Active but messy
         # Freq < 7 days (40pts), Msg short (0pts), Conv 0% (0pts) -> 40 -> "Active" or "Standard"
@@ -104,8 +106,9 @@ class TestNewFeatures(unittest.TestCase):
              {"date": (now - timedelta(days=1)).isoformat(), "message": "stuff"},
              {"date": (now - timedelta(days=2)).isoformat(), "message": "more stuff"}
         ]
-        label, cc, avg_days = analyzer.analyze(history_messy)
+        label, cc, avg_days, score = analyzer.analyze(history_messy)
         self.assertEqual(label, "Active") # Score 40 -> Active
+        self.assertEqual(score, 40)
         
 if __name__ == "__main__":
     unittest.main()

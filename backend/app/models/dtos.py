@@ -1,6 +1,12 @@
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 
+class ScoreDetail(BaseModel):
+    value: int
+    label: str
+    pros: List[str] = []
+    cons: List[str] = []
+
 class Repository(BaseModel):
     name: str
     description: Optional[str] = None
@@ -14,15 +20,22 @@ class Repository(BaseModel):
     has_tests: bool = False
     has_license: bool = False
     dependencies: List[str] = []
-    maturity_score: int = 0
-    maturity_label: str = "Hobby"
     
-    # Advanced Metrics (New)
+    # Scores as Detailed Objects
+    maturity_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="Hobby"))
+    repo_documentation_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="None"))
+    code_hygiene_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(value=0, label="Standard"))
+    
+    # Deprecated/Derived Simple Fields (Optional: keep for backward compat if needed, or remove. Removing to force update)
+    maturity_label: str = "Hobby" # We can sync this with score.label
+    
+    # Metrics
     conventional_commits_ratio: float = 0.0
     commit_frequency: float = 0.0
     average_message_length: float = 0.0
-    repo_documentation_score: int = 0
-    code_hygiene_score: int = 0
+    
+    # Recommendations
+    recommendations: List[str] = []
 
     # Raw Data Fields
     file_tree: List[str] = []
@@ -50,13 +63,16 @@ class Suggestion(BaseModel):
 
 class AnalysisReport(BaseModel):
     username: str
-    profile_score: int
-    avg_repo_docs_score: int
-    personal_readme_score: int
-    repo_quality_score: int
-    overall_score: int
+    
+    # Detailed Scores
+    profile_score: ScoreDetail
+    personal_readme_score: ScoreDetail
+    avg_repo_docs_score: ScoreDetail
+    avg_code_hygiene_score: ScoreDetail
+    repo_quality_score: ScoreDetail
+    overall_score: ScoreDetail
+    
     summary: str
     suggestions: List[Suggestion] = []
     details: Dict[str, Any] = Field(default_factory=dict)
     raw_llm_response: Optional[Dict[str, Any]] = None
-    avg_code_hygiene_score: int = 0
