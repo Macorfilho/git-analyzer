@@ -92,7 +92,10 @@ class DependencyCollector:
         # 3. Go (go.mod)
         go_mod = dependency_files.get("go.mod")
         if go_mod:
-             matches = re.findall(r'^\s*([a-zA-Z0-9\.\-/]+)\s+v', go_mod, re.MULTILINE)
+             # Look for packages in require (...) or direct lines
+             # Matches lines like: "github.com/pkg/errors v0.9.1" or indented inside require
+             # Also matches "require google.golang.org/grpc v1.40.0"
+             matches = re.findall(r'^\s*(?:require\s+)?([a-zA-Z0-9\.\-/]+)\s+v[0-9]', go_mod, re.MULTILINE)
              dependencies.update(matches)
 
         # 4. Rust (Cargo.toml)
@@ -108,6 +111,7 @@ class DependencyCollector:
                     in_deps = False
                 
                 if in_deps and line and not line.startswith("#"):
+                     # Match: name = "version" or name = { version = "..." }
                      match = re.match(r'^([a-zA-Z0-9\-_]+)\s*=', line)
                      if match:
                          dependencies.add(match.group(1))
@@ -117,17 +121,38 @@ class DependencyCollector:
         if pom_xml:
             matches = re.findall(r'<artifactId>([a-zA-Z0-9\.\-_]+)</artifactId>', pom_xml)
             dependencies.update(matches)
+            
+        # 6. Java/Kotlin (build.gradle)
+        build_gradle = dependency_files.get("build.gradle")
+        if build_gradle:
+            # Match: implementation 'group:name:version' or implementation("...")
+            matches = re.findall(r'implementation\s*\(?[\'"]([^\'"]+)[\'"]', build_gradle)
+            # Clean up matches (sometimes they include group:)
+            for m in matches:
+                if ':' in m:
+                    dependencies.add(m.split(':')[1]) # Add artifactId only usually, or full? Let's add full for now or artifact. 
+                    # pom.xml adds artifactId. Let's stick to artifactId if possible or just the full string.
+                    # The user requirement doesn't specify. Let's keep full string or split.
+                    # pom.xml logic: <artifactId>...
+                    # build.gradle: "com.example:lib:1.0" -> "lib"?
+                    # Let's try to extract the name.
+                    dependencies.add(m)
+                else:
+                    dependencies.add(m)
 
-        # 6. PHP (composer.json)
+        # 7. PHP (composer.json)
         composer = dependency_files.get("composer.json")
         if composer:
             try:
+                # Try JSON parse first
                 data = json.loads(composer)
                 deps = data.get('require', {})
                 if isinstance(deps, dict):
                     dependencies.update([k for k in deps.keys() if k.lower() != 'php'])
             except json.JSONDecodeError:
-                pass
+                # Fallback to regex if JSON fails (as per "regex support" hint)
+                matches = re.findall(r'"([a-zA-Z0-9\-_]+/[a-zA-Z0-9\-_]+)"\s*:', composer)
+                dependencies.update(matches)
         
         return sorted(list(dependencies))[:30]
 

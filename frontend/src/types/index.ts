@@ -28,6 +28,8 @@ export interface Repository {
     commit_frequency: number;
     average_message_length: number;
     repo_documentation_score: number;
+    code_hygiene_score: number;
+    is_ghost?: boolean;
 }
 
 export interface AnalysisDetails {
@@ -44,10 +46,11 @@ export interface AnalysisDetails {
 export interface AnalysisReport {
     username: string;
     profile_score: number;
-    readme_score: number;
+    avg_repo_docs_score: number;
+    personal_readme_score: number;
     repo_quality_score: number;
-    repo_docs_score: number;
     overall_score: number;
+    avg_code_hygiene_score: number;
     summary: string;
     suggestions: Suggestion[];
     details: AnalysisDetails;

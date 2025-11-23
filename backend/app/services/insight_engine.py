@@ -3,6 +3,42 @@ from typing import List, Dict, Set, Tuple, Any
 from datetime import datetime, timezone
 from app.models.dtos import Repository
 
+class ProfileReadmeAnalyzer:
+    """
+    Scores the user's personal profile README.
+    """
+    def analyze(self, content: str) -> int:
+        score = 0
+        if not content:
+            return 0
+            
+        lower_content = content.lower()
+        
+        # 1. Personal Branding Sections (+20 each)
+        
+        # "About Me" / "Introduction"
+        if "about me" in lower_content or "introduction" in lower_content or "hi, i'm" in lower_content:
+            score += 20
+            
+        # "Tech Stack" / "Skills"
+        if "tech stack" in lower_content or "skills" in lower_content or "technologies" in lower_content or "tools" in lower_content:
+            score += 20
+            
+        # "Contact" / "Socials"
+        if "contact" in lower_content or "social" in lower_content or "connect with me" in lower_content:
+            score += 20
+            
+        # "Stats" / "Badges" (GitHub Stats images)
+        # Look for common stats card URLs or markdown image syntax generally in a stats context
+        if "github-readme-stats" in lower_content or "github-profile-trophy" in lower_content or "github-trophy" in lower_content or "streak-stats" in lower_content or "metrics" in lower_content:
+            score += 20
+            
+        # 2. Length Bonus (+20)
+        if len(content) > 500:
+            score += 20
+            
+        return min(score, 100)
+
 class RepoDocumentationAnalyzer:
     """
     Scores the quality of a repository's documentation.
@@ -38,17 +74,18 @@ class CommitHygieneAnalyzer:
     """
     Analyzes commit history for consistency and professional standards.
     """
-    def analyze(self, history: List[Dict[str, Any]]) -> Tuple[str, float, float]:
+    def analyze(self, history: List[Dict[str, Any]]) -> Tuple[str, float, float, int]:
         if not history:
             return "Inactive", 0.0, 0.0
 
-        # 1. Conventional Commits Ratio
-        # Regex for "feat:", "fix:", "docs:", etc.
+        # 1. Calculate Metrics
+        
+        # Conventional Commits Ratio
         cc_pattern = r'^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\(.+\))?: .+'
         cc_count = sum(1 for c in history if re.match(cc_pattern, c.get("message", "").strip()))
         cc_ratio = cc_count / len(history)
         
-        # 2. Commit Frequency (Average days between commits)
+        # Commit Frequency (Average days between commits)
         dates = []
         for c in history:
             d_str = c.get("date")
@@ -62,18 +99,48 @@ class CommitHygieneAnalyzer:
         
         avg_days = 0.0
         if len(dates) >= 2:
-            # Calculate differences between consecutive commits
             deltas = [(dates[i+1] - dates[i]).total_seconds() / 86400 for i in range(len(dates)-1)]
             avg_days = sum(deltas) / len(deltas) if deltas else 0.0
+        elif len(dates) == 1:
+            # If only one commit, treat it as reasonably active but with 0 interval
+            avg_days = 0.0 
+
+        # Message Length
+        total_len = sum(len(c.get("message", "")) for c in history)
+        avg_msg_len = total_len / len(history) if history else 0
+
+        # 2. Scoring Logic (Weighted Sum 0-100)
+        score = 0
         
-        # Classification Logic
+        # Frequency (40pts)
+        if avg_days < 7:
+            score += 40
+        elif avg_days < 30:
+            score += 20
+        else:
+            score += 0
+            
+        # Message Length (30pts)
+        if avg_msg_len > 15:
+            score += 30
+            
+        # Convention (30pts)
+        score += (cc_ratio * 30)
+        
+        # 3. Classification based on Score
         label = "Standard"
-        if avg_days > 30:
-             label = "Inactive"
-        elif cc_ratio > 0.5:
-            label = "Hygiene"
-             
-        return label, cc_ratio, avg_days
+        if score >= 80:
+            label = "Professional" # High hygiene + activity
+        elif score >= 60:
+            label = "Hygiene"      # Good practices
+        elif score >= 40:
+            label = "Active"       # Active but maybe messy
+        elif avg_days > 60:
+            label = "Inactive"
+        else:
+            label = "Standard"     # Middle ground
+
+        return label, cc_ratio, avg_days, score
 
 class MaturityAnalyzer:
     """

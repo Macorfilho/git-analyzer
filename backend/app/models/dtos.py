@@ -22,6 +22,7 @@ class Repository(BaseModel):
     commit_frequency: float = 0.0
     average_message_length: float = 0.0
     repo_documentation_score: int = 0
+    code_hygiene_score: int = 0
 
     # Raw Data Fields
     file_tree: List[str] = []
@@ -50,10 +51,12 @@ class Suggestion(BaseModel):
 class AnalysisReport(BaseModel):
     username: str
     profile_score: int
-    readme_score: int
+    avg_repo_docs_score: int
+    personal_readme_score: int
     repo_quality_score: int
     overall_score: int
     summary: str
     suggestions: List[Suggestion] = []
     details: Dict[str, Any] = Field(default_factory=dict)
     raw_llm_response: Optional[Dict[str, Any]] = None
+    avg_code_hygiene_score: int = 0
