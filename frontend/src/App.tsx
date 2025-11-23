@@ -20,8 +20,8 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 font-sans selection:bg-black selection:text-white">
-      <main className="container mx-auto px-4 py-16 max-w-4xl">
+    <div className="min-h-screen bg-white text-gray-900 font-sans selection:bg-black selection:text-white">
+      <main className="container mx-auto px-4 py-24 max-w-4xl">
         
         {/* Header */}
         <header className="text-center mb-16">
@@ -38,37 +38,75 @@ const App: React.FC = () => {
         
         {/* Loading Status Indicator */}
         {loading && (
-            <div className="mt-4 text-center text-gray-500 animate-pulse">
-                {getStatusMessage()}
+            <div className="mt-8 text-center">
+                <div className="inline-block animate-pulse text-sm font-medium text-gray-400 uppercase tracking-widest">
+                    {getStatusMessage()}
+                </div>
             </div>
         )}
 
         {/* Error State */}
         {error && (
-          <div className="bg-red-50 border border-red-100 text-red-600 px-4 py-3 rounded relative mb-8 text-center mt-8" role="alert">
-            <span className="block sm:inline font-medium">{error}</span>
+          <div className="bg-red-50 text-red-600 px-6 py-4 rounded-xl border border-red-100 text-center mt-8 max-w-lg mx-auto" role="alert">
+            <span className="block font-medium">{error}</span>
           </div>
         )}
 
         {/* Results */}
         {data && !loading && (
-          <div className="animate-fade-in-up mt-12">
+          <div className="animate-fade-in-up mt-16 space-y-16">
             
             {/* Summary Section */}
-            <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 mb-12">
-               <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6 gap-4">
-                  <h2 className="text-3xl font-light">Results for <span className="font-semibold">{data.username}</span></h2>
-                  <span className="inline-flex items-center px-3 py-1 text-sm font-medium bg-gray-100 text-gray-600 rounded-full whitespace-nowrap">
-                      {data.details?.repo_count ?? 0} Repositories Scanned
+            <div>
+               <div className="flex flex-col md:flex-row md:items-baseline md:justify-between mb-8">
+                  <h2 className="text-3xl font-bold tracking-tight text-gray-900">Analysis Results</h2>
+                  <span className="text-sm font-medium text-gray-500">
+                      Analysis Report: {data.username} • {data.details?.repo_count ?? 0} Repositories
                   </span>
                </div>
                
-               <div className="prose prose-sm text-gray-500 max-w-none mb-8">
-                  <ReactMarkdown>{data.summary}</ReactMarkdown>
+               {/* Score Display Component */}
+               <div className="flex flex-col-reverse lg:flex-row gap-16 mb-24 items-stretch">
+                   <div className="flex-1 flex flex-col justify-center">
+                       <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-6">Executive Summary</h3>
+                       <div className="prose prose-lg text-gray-600 max-w-none leading-relaxed">
+                          <ReactMarkdown>{data.summary}</ReactMarkdown>
+                       </div>
+                   </div>
+                   
+                   <div className="hidden lg:block w-px bg-gray-100 mx-4"></div>
+
+                   <div className="shrink-0 lg:w-72 flex flex-col items-center justify-center">
+                       <span className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-4">Overall Score</span>
+                       <div className="text-9xl font-thin tracking-tighter text-gray-900 mb-6 leading-none">
+                           {data.overall_score.score}
+                       </div>
+                       
+                       <div className={`px-5 py-2 rounded-full text-sm font-medium mb-10 ${
+                            data.overall_score.score >= 80 ? 'bg-emerald-50 text-emerald-700' :
+                            data.overall_score.score >= 50 ? 'bg-amber-50 text-amber-700' :
+                            'bg-rose-50 text-rose-700'
+                       }`}>
+                           {data.overall_score.level}
+                       </div>
+                       
+                       <div className="w-full flex justify-between gap-8 px-4">
+                           <div className="flex flex-col items-center">
+                               <span className="text-xs text-gray-400 uppercase tracking-wide mb-1">Potential</span>
+                               <span className="font-medium text-gray-900">High</span>
+                           </div>
+                           <div className="flex flex-col items-center">
+                               <span className="text-xs text-gray-400 uppercase tracking-wide mb-1">Market Ready</span>
+                               <span className="font-medium text-gray-900">{data.overall_score.score > 70 ? 'Yes' : 'No'}</span>
+                           </div>
+                       </div>
+                   </div>
                </div>
 
-               {/* Score Display Component */}
-               <ScoreDisplay report={data} />
+               <div className="mb-12">
+                    <h3 className="text-2xl font-bold mb-8 text-gray-900 tracking-tight">Detailed Metrics</h3>
+                    <ScoreDisplay report={data} />
+               </div>
             </div>
             
             {/* Repositories Section */}

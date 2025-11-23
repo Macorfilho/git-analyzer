@@ -8,73 +8,139 @@ interface SuggestionListProps {
 }
 
 const SuggestionList: React.FC<SuggestionListProps> = ({ suggestions, roadmap }) => {
-  const getSeverityStyles = (severity: string) => {
+
+  const getSeverityIcon = (severity: string) => {
+
     switch(severity) {
-      case 'high': return 'border-red-500 text-red-600';
-      case 'medium': return 'border-yellow-500 text-yellow-600';
-      default: return 'border-blue-500 text-blue-600';
+
+      case 'high': return '🔴';
+
+      case 'medium': return '🟡';
+
+      default: return '🔵';
+
     }
+
   };
 
+
+
   return (
-    <div className="mt-12 space-y-12">
+
+    <div className="mt-20 space-y-20">
+
         {/* Career Roadmap Section */}
+
         {roadmap && roadmap.length > 0 && (
+
             <div>
-                 <h3 className="text-xl font-light mb-6 text-gray-900 tracking-tight flex items-center gap-2">
-                    <span>🚀</span> Career Roadmap
-                 </h3>
-                 <div className="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-8 border border-blue-100">
-                    <div className="space-y-8">
+
+                 <h3 className="text-2xl font-bold mb-8 text-gray-900 tracking-tight">Strategic Roadmap</h3>
+
+                 <div className="bg-gray-50 rounded-2xl p-10 relative overflow-hidden">
+
+                    <div className="absolute top-0 right-0 p-32 bg-blue-50 rounded-full blur-3xl opacity-50 pointer-events-none -mr-16 -mt-16"></div>
+
+                    <div className="space-y-12 relative z-10">
+
                         {roadmap.map((step, index) => (
-                            <div key={index} className="relative flex gap-6">
+
+                            <div key={index} className="flex gap-8 group">
+
                                 <div className="flex flex-col items-center">
-                                    <div className="w-8 h-8 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0 z-10">
+
+                                    <div className="w-10 h-10 rounded-full bg-white border border-gray-200 text-gray-900 shadow-sm flex items-center justify-center font-bold text-sm shrink-0 z-10 group-hover:border-blue-500 group-hover:text-blue-600 transition-colors">
+
                                         {index + 1}
+
                                     </div>
+
                                     {index < roadmap.length - 1 && (
-                                        <div className="w-0.5 h-full bg-indigo-200 my-2"></div>
+
+                                        <div className="w-px h-full bg-gray-200 my-2 group-hover:bg-blue-100 transition-colors"></div>
+
                                     )}
+
                                 </div>
-                                <div className="pb-2">
-                                    <h4 className="text-lg font-medium text-indigo-900 mb-2">{step.step}</h4>
-                                    <p className="text-indigo-700/80 text-sm leading-relaxed">{step.description}</p>
+
+                                <div className="pb-2 pt-1">
+
+                                    <h4 className="text-xl font-semibold text-gray-900 mb-2">{step.step}</h4>
+
+                                    <p className="text-gray-600 text-base leading-relaxed max-w-2xl">{step.description}</p>
+
                                 </div>
+
                             </div>
+
                         ))}
+
                     </div>
+
                  </div>
+
             </div>
+
         )}
 
+
+
         {/* Suggestions Section */}
+
         {suggestions && suggestions.length > 0 && (
+
             <div>
-                <h3 className="text-xl font-light mb-6 text-gray-900 tracking-tight">Actionable Suggestions</h3>
-                <div className="space-y-4">
+
+                <h3 className="text-2xl font-bold mb-8 text-gray-900 tracking-tight">Priority Actions</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
                     {suggestions.map((suggestion, index) => {
-                        const severityStyle = getSeverityStyles(suggestion.severity);
+
+                        const icon = getSeverityIcon(suggestion.severity);
+
                         return (
-                            <div key={index} className={`p-5 bg-white border-l-2 shadow-sm rounded-r-lg ${severityStyle.split(' ')[0]}`}>
-                                <div className="flex justify-between items-baseline mb-2">
-                                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">
+
+                            <div key={index} className="p-6 bg-white rounded-2xl border border-gray-100 hover:border-gray-200 shadow-sm hover:shadow-md transition-all">
+
+                                <div className="flex justify-between items-baseline mb-4">
+
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-gray-400">
+
                                         {suggestion.category}
+
                                     </span>
-                                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border capitalize ${severityStyle.includes('red') ? 'bg-red-50 border-red-100 text-red-600' : severityStyle.includes('yellow') ? 'bg-yellow-50 border-yellow-100 text-yellow-600' : 'bg-blue-50 border-blue-100 text-blue-600'}`}>
+
+                                    <span className="text-xs font-medium px-2 py-1 bg-gray-50 rounded-md text-gray-500">
+
                                         {suggestion.severity} Priority
+
                                     </span>
+
                                 </div>
-                                <div className="prose prose-sm text-gray-600 font-light max-w-none leading-relaxed">
+
+                                <div className="prose prose-sm text-gray-600 font-light leading-relaxed">
+
                                     <ReactMarkdown>{suggestion.message}</ReactMarkdown>
+
                                 </div>
+
                             </div>
+
                         );
+
                     })}
+
                 </div>
+
             </div>
+
         )}
+
     </div>
+
   );
+
 };
 
 export default SuggestionList;
