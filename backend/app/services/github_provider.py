@@ -26,7 +26,7 @@ class GithubProvider(IGithubProvider):
         except Exception:
             return None
 
-    def _fetch_repo_data(self, repo) -> Repository:
+    def _process_single_repo(self, repo) -> Repository:
         """
         Fetches all raw data for a single repository.
         Executed in parallel.
@@ -83,6 +83,13 @@ class GithubProvider(IGithubProvider):
                 })
         except Exception:
             pass
+        
+        # 5. Fetch Topics
+        topics = []
+        try:
+            topics = repo.get_topics()
+        except Exception:
+            pass
 
         return Repository(
             name=repo.name,
@@ -97,6 +104,7 @@ class GithubProvider(IGithubProvider):
             has_tests=False,   # To be determined by analyzer
             has_license=False, # To be determined by analyzer
             dependencies=[],   # To be determined by analyzer
+            topics=topics,
             file_tree=file_tree,
             dependency_files=dependency_files,
             readme_content=readme_content,
@@ -109,27 +117,18 @@ class GithubProvider(IGithubProvider):
             
             # Fetch top 15 repositories
             # Sort by updated to get most relevant/active
-            repos_iterable = user.get_repos(type='owner', sort='updated', direction='desc')
-            
-            # We need to convert the paginated list to a standard list to slice it, 
-            # but getting all might be slow if user has 100s. 
-            # PyGithub PaginatedList is lazy, slicing it `[:15]` fetches only the first page(s).
-            target_repos = []
-            count = 0
-            for repo in repos_iterable:
-                target_repos.append(repo)
-                count += 1
-                if count >= 15:
-                    break
+            # Convert to list first (slicing)
+            target_repos = list(user.get_repos(type='owner', sort='updated', direction='desc')[:15])
             
             # Parallel Fetching
             repositories_data = []
             with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                future_to_repo = {executor.submit(self._fetch_repo_data, repo): repo for repo in target_repos}
+                future_to_repo = {executor.submit(self._process_single_repo, repo): repo for repo in target_repos}
                 for future in concurrent.futures.as_completed(future_to_repo):
                     try:
                         data = future.result()
-                        repositories_data.append(data)
+                        if data:
+                            repositories_data.append(data)
                     except Exception as exc:
                         repo = future_to_repo[future]
                         print(f"Repo {repo.name} generated an exception: {exc}")

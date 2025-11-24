@@ -29,6 +29,7 @@ export interface Repository {
     has_tests: boolean;
     has_license: boolean;
     dependencies: string[];
+    topics?: string[];
     maturity_score: ScoreDetail;
     maturity_label: "Production-Grade" | "Prototype" | "Hobby";
     conventional_commits_ratio: number;

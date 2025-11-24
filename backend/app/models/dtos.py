@@ -20,6 +20,7 @@ class Repository(BaseModel):
     has_tests: bool = False
     has_license: bool = False
     dependencies: List[str] = []
+    topics: List[str] = []
     
     # Scores as Detailed Objects
     maturity_score: ScoreDetail = Field(default_factory=lambda: ScoreDetail(score=0, level="Hobby"))

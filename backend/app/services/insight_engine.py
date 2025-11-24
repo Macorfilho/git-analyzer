@@ -85,7 +85,7 @@ class RepoDocumentationAnalyzer:
         
         header_groups = {
             "Installation": ["installation", "instalação", "instalación", "setup", "configuração"],
-            "Usage": ["usage", "uso", "utilização", "how to run", "como rodar"],
+            "Usage": ["usage", "uso", "utilização", "how to run", "como rodar", "como usar"],
             "Getting Started": ["getting started", "começando", "primeiros passos", "empezando"],
             "API/Docs": ["api", "documentation", "documentação", "documentación", "docs"],
             "Contributing": ["contributing", "contribuição", "contribuyendo", "contribute"]
@@ -269,11 +269,34 @@ class MaturityAnalyzer:
         
         score = max(0, min(score, 100))
         
+        # Smart Classification
         level = "Hobby"
+        
+        # 1. Academic Check
+        academic_keywords = ["study", "bootcamp", "course", "challenge", "exercise", "estudo", "curso", "desafio"]
+        # Combine description, name, and topics (if available)
+        text_source = (repo.description or "") + " " + repo.name + " " + " ".join(repo.topics or [])
+        is_academic = any(kw in text_source.lower() for kw in academic_keywords)
+        
+        # 2. Utility Check (small, useful scripts)
+        # Assuming file_tree is populated. < 3 files (e.g. script.py + README)
+        # If file_tree is just list of paths, we count them.
+        is_utility = False
+        if repo.file_tree and len(repo.file_tree) < 3 and repo.readme_content: 
+             is_utility = True
+
         if is_ghost:
             level = "Archived/Ghost"
+        elif is_academic:
+            level = "Academic"
+        elif is_utility:
+            level = "Utility"
         elif score >= 75:
             level = "Production-Grade"
+            # Downgrade to Prototype if missing crucial documentation
+            if not repo.description or not repo.readme_content:
+                level = "Prototype"
+                negatives.append("Downgraded to Prototype due to missing description/README")
         elif score >= 45:
             level = "Prototype"
         else:

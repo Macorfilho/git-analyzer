@@ -202,6 +202,28 @@ class AnalysisService:
         
         current_time = datetime.now(timezone.utc)
 
+        # Find Personal Profile Repo
+        profile_repo_section = "No dedicated profile repository (username/username) found."
+        for repo in user.repositories:
+             if repo.name.lower() == user.username.lower():
+                 last_update_dt = None
+                 try:
+                     last_update_dt = datetime.fromisoformat(repo.updated_at.replace("Z", "+00:00"))
+                     if last_update_dt.tzinfo is None:
+                         last_update_dt = last_update_dt.replace(tzinfo=timezone.utc)
+                 except:
+                     pass
+                 days_since = (current_time - last_update_dt).days if last_update_dt else "Unknown"
+                 readme_len = len(repo.readme_content) if repo.readme_content else 0
+                 profile_repo_section = (
+                     f"Dedicated Profile Repository ('{repo.name}') FOUND:\n"
+                     f"- Stars: {repo.stargazers_count}\n"
+                     f"- Last Update: {days_since} days ago\n"
+                     f"- README Size: {readme_len} chars\n"
+                     f"- Note: This is the user's main landing page. Treat it as a critical signal of their personal branding effort."
+                 )
+                 break
+
         # Generate Narrative Summaries
         for repo in user.repositories[:15]:
             # 1. Determine Status & Staleness
@@ -288,6 +310,8 @@ class AnalysisService:
         context = (
             f"REPORT FOR USER: {user.username}\n"
             f"BIO: {user.bio or 'No bio provided'}\n\n"
+            f"--- PERSONAL BRANDING / PROFILE REPOSITORY ---\n"
+            f"{profile_repo_section}\n\n"
             f"--- PORTFOLIO ANALYSIS ---\n"
             f"- Total Repositories: {len(user.repositories)}\n"
             f"- Total Repos with CI/CD: {repos_with_ci}/{len(user.repositories)}\n"
